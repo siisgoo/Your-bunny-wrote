@@ -1,3 +1,9 @@
+rediirector.db-journal
+rediirector.db
+config.json
+bin/
+*.js
+*.js.min
 # Logs
 logs
 *.log

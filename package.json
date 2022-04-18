@@ -1,0 +1,20 @@
+{
+    "name": "tech-chat",
+    "version": "0.1.2",
+    "description": "tech bot site chat logic",
+    "main": "chat.js",
+    "scripts": {
+        "build": "tsc --build --pretty",
+        "postbuild": "minify chat.js > chat.js.min"
+    },
+    "author": "siisgoo",
+    "devDependencies": {
+        "@tsconfig/esm": "^1.0.0",
+        "@types/jquery": "^3.5.14"
+    },
+    "dependencies": {
+        "jquery": "^3.6.0",
+        "sse": "^0.0.8",
+        "typescript": "^4.6.3"
+    }
+}

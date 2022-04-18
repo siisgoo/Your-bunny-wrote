@@ -1,0 +1,21 @@
+{
+    "compilerOptions": {
+        "strict": true,
+        "declaration": true,
+        "outDir": "./bin",
+        "allowJs": true,
+        "target": "ESNext",
+        "module": "ESNext",
+        "esModuleInterop": true,
+        "moduleResolution": "node",
+        "resolveJsonModule": true,
+        "baseUrl": "node_modules",
+        "typeRoots": ["node_modules/@types"]
+    },
+    "include": [
+        "./src/**/*"
+    ],
+    "files": [
+        "./../chat.d.ts"
+    ]
+}
