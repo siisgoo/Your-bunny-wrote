@@ -4,6 +4,7 @@ config.json
 bin/
 *.js
 *.js.min
+avatars/*
 # Logs
 logs
 *.log

@@ -1,7 +1,7 @@
 {
     "name": "tech-chat",
     "version": "0.1.2",
-    "description": "tech bot site chat logic",
+    "description": "rediirector client-side chat logic",
     "main": "chat.js",
     "scripts": {
         "build": "tsc --build --pretty",

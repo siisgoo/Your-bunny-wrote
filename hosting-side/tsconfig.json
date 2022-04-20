@@ -3,12 +3,12 @@
         "preserveConstEnums": true,
         "outFile": "./chat.js",
         "allowJs": true,
-        "declaration": true,
         "target": "ES6",
         "typeRoots": ["node_modules/@types"]
     },
     "removeComments": true,
     "files": [
-        "./chat.ts"
+        "./chat.ts",
+        "./../shared-types.d.ts"
     ]
 }

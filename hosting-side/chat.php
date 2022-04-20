@@ -13,10 +13,6 @@
 </button>
 
 <div id="chat-box"  class="drag-notactive">
-<?php
-    $files = glob($_SERVER["DOCUMENT_ROOT"] . "/techbot/images/backgrounds/*");
-    echo '<div id="chat-background-count" data="' . count($files) . '" style="display:none;"></div>';
-?>
     <div id="chat-box-header" class="noselect">
         Tech-chat
         <div class="zig-zag"></div>
