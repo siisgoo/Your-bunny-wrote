@@ -1,5 +1,5 @@
 const VERSION = "v0.1.2 beta";
-const botName = "Tech-bot " + VERSION;
+const botName = "Shady " + VERSION;
 const userIconPath = "/rediirector/hosting-side/images/avatars/user-icon.png";
 const botIconPath = "/rediirector/hosting-side/images/avatars/bot-icon.png";
 
@@ -15,7 +15,7 @@ interface cookieOptions {
     SameSite?: string
 };
 
-interface ChatButton {
+interface ChatMessageButton {
     name: string,
     value: string,
 };
@@ -217,145 +217,6 @@ class DragDrop {
     }
 };
 
-function chatToggleNormalLeft(): number {
-    return $("#chat-toggle-text").width() - $("#chat-toggle").width() + 4;
-}
-
-function adjustChatToggle(time = 0): void {
-    $("#chat-toggle").animate({left: chatToggleNormalLeft()}, time);
-}
-
-function setTranslate(xPos, yPos, el, time = 0): void { el.animate({ left: xPos, top: yPos }, time); }
-
-function setupChatMovement(): void {
-    // TODO best nameing, ever...
-    const frame_initial = $("#chat-box").position();
-
-    const frame_normal_x = $("#chat-box").position().left;
-    const frame_hide_x = -$("#chat-box").width() - frame_normal_x;
-
-    const frame_normal_height = $("#chat-box").height();
-
-    let chatFrameState =
-        {'hidden': false, 'visible': true};
-
-    let chatResizeLock = false;
-
-    $("#chat-toggle").hover(
-        e => {
-            let animate = () => $("#chat-toggle").stop().animate({ left: 0 }, 1500, "easeInOutQuint"); // TODO adjust duration by showed width
-            chatToggleStillHovered = true;
-            if (chatToggleAlreadyOpened) {
-                chatToggleAlreadyOpened = true;
-                animate();
-            } else {
-                setTimeout(() => {
-                    if (chatToggleStillHovered) {
-                        chatToggleAlreadyOpened = true
-                        animate();
-                    }
-                }, 1050)
-            }
-        }, e => {
-            chatToggleStillHovered = false;
-            $("#chat-toggle").stop().animate({ left: chatToggleNormalLeft() }, 2000, "easeOutCubic", () => { chatToggleAlreadyOpened = false; });
-        }
-    );
-
-    $("#chat-toggle-text").on("click", ev => {
-        if (chatFrameState.hidden) {
-            chatFrameState.hidden = false;
-            chatFrameState.visible = true;
-            $("#chat-box").stop();
-            $("#chat-box")
-                .animate({
-                    left: frame_normal_x,
-                    top: frame_initial.top,
-                    height: "toggle",
-                    width: "toggle"
-                }, 1000, "easeOutQuad");
-        } else {
-            chatFrameState.hidden = true;
-            chatFrameState.visible = false;
-            $("#chat-box").stop();
-            $("#chat-box")
-                .animate({
-                    left: frame_hide_x,
-                    top: frame_initial.top,
-                    height: "toggle",
-                    width: "toggle"
-                }, 1000, "easeOutQuad");
-        }
-    });
-
-    function resizeChat(size: { width: number, height: number }, dur: number = 0, then = null) {
-        $("#chat-logs").animate({
-            height: size.height -
-                    $("#chat-box-header")[0].offsetHeight -
-                    $("#chat-input")[0].offsetHeight
-        }, dur, then);
-        $("#chat-box").animate({
-            width: size.width,
-            height: size.height
-        }, dur, then);
-    }
-
-    // reset to default
-    resizeChat({ width: $("#chat-box").width(), height: $("#chat-box").height() });
-    $("#chat-vertical-normal").css("display", "none");
-
-    // chat resizing buttons
-    $("#chat-vertical-maximize").on("click", function() {
-        if (!chatResizeLock) {
-            chatResizeLock = true;
-            $(this).css("display", "none");
-            $("#chat-vertical-normal").css("display", "block");
-
-            $("#chat-box").animate(
-                {
-                    top: 0,
-                    left: 6
-                }, 500,
-                () => {
-                    resizeChat(
-                        {
-                            width: $("#chat-box").width(),
-                            height: window.innerHeight
-                        }, 1000,
-                        () => {
-                            chatResizeLock = false;
-                        });
-                }
-            );
-        }
-    });
-    $("#chat-vertical-normal").on("click", function()  {
-        if (!chatResizeLock) {
-            chatResizeLock = true;
-            $("#chat-vertical-maximize").css("display", "block");
-            $(this).css("display", "none");
-
-            resizeChat(
-                {
-                    width: $("#chat-box").width(),
-                    height: frame_normal_height
-                }, 1000,
-                () => $("#chat-box").animate(
-                    {
-                        top: frame_initial.top,
-                        left: frame_initial.left
-                    }, 500,
-                    () => {
-                        chatResizeLock = false;
-                    })
-            );
-        }
-    });
-}
-
-function setup(): void {
-}
-
 class Companion extends EventEmitter {
     ask(text: string) {
     }
@@ -363,7 +224,7 @@ class Companion extends EventEmitter {
 
 interface botMessage {
     text: string,
-    buttons?: ChatButton[],
+    buttons?: ChatMessageButton[],
 }
 
 class Bot extends Companion {
@@ -430,13 +291,7 @@ class Bot extends Companion {
         } else { // answer
             this.appendMessage(this.botMessages.returnToManager);
             this.emit('managerReq');
-            // let faqAns = faqSearch(text);
-            // if (faqAns != null) {
-            //     appendMessage(faqAns);
-            // } else {
-            //     botMessages.returnToManager();
-            //     returnToManager();
-            // }
+            // process logic
         }
         return msg;
     }
@@ -448,16 +303,55 @@ class Reactor extends EventEmitter {
 
     constructor() {
         super();
-        this.url = "wss://027a-185-253-102-98.ngrok.io/ws";
+        this.url = "wss://f7cb-185-253-102-98.ngrok.io/ws";
         console.log("Reactor connecting to ", this.url);
         this.socket = new WebSocket(this.url);
+
+        this.socket.onerror = (e) => {
+            this.emit("error");
+        }
+        this.socket.onclose = (e) => {
+            switch (e.code) {
+                case 1000:
+                    this.emit("shutdown");
+                    break;
+                case 1011:
+                    this.emit("error");
+                    break;
+                case 1014:
+                    this.emit("notAvalible");
+                    break;
+                default:
+                    this.emit("shutdown");
+            }
+        }
         this.socket.onopen = () => {
             console.log("Reactor online");
-            this.socket.send(JSON.stringify({ hash: getCookie("chatHash") }))
+            this.emit("ready");
+            this.socket.send(JSON.stringify({ hash: getCookie("chatHash") }));
         }
         this.socket.onmessage = (ev: MessageEvent<string>) => {
-            console.log(ev.data);
-            this.emit("message", JSON.parse(ev.data.toString()));
+            let data: ServerMessage = JSON.parse(ev.data.toString());
+            switch (data.event) {
+                case "created":
+                    // @ts-ignore
+                    setCookie("chatHash", data.payload.hash);
+                    break;
+                case "restored":
+                    break;
+                case "answer":
+                    // @ts-ignore
+                    this.emit("message", data.payload.message);
+                    break;
+                case "accepted":
+                    this.emit("accepted", data.payload);
+                    break;
+                case "leaved":
+                    this.emit("leaved", data.payload);
+                    break;
+                default:
+                    console.log("Unknown data from server: ", data)
+            }
         }
     }
 
@@ -470,7 +364,12 @@ class Reactor extends EventEmitter {
     }
 
     sendMessage(msg: ChatMessage) {
-        this.socket.send(JSON.stringify(msg));
+        this.socket.send(JSON.stringify({
+            event: "message",
+            data: {
+                message: msg
+            }
+        }));
     }
 }
 
@@ -482,9 +381,16 @@ class Manager extends Companion {
         super();
         console.log("Manager online");
         this.reactor = new Reactor();
-        this.reactor.on("accepted", () => console.log("Manager connected to chat"));
+        this.reactor.on("accepted", (name: string) => {
+            $("#chat-manager-name").text(name);
+        });
         this.reactor.on("leaved", () => console.log("Manager leaved chat"));
-        this.reactor.on("message", () => console.log("Manager send message"));
+        this.reactor.on("created", (hash: string) => {
+            setCookie("chatHash", hash)
+        });
+        this.reactor.on("answer", (msg: ChatMessage) => {
+            Chat.appendMessage({ message: msg });
+        });
         this.reactor.on("closed", () => console.log("Manager closed chat"));
     }
 
@@ -494,48 +400,24 @@ class Manager extends Companion {
 
     ask(text: string) {
         let msg: ChatMessage;
+        this.reactor.sendMessage({
+            id: -1,
+            from: 'customer',
+            creator: getCookie('customerName'),
+            text: text,
+            time: new Date().getTime()
+        });
         return msg;
     }
 }
 
-class Chat {
-    private companion: Companion;
-
-    private whileSending: boolean = false;
-    static lastMessageId: number = 0; // local message id, will not be synced with server
-    static chatHistory: Array<ChatMessage> = new Array();
+class ChatButton extends EventEmitter {
+    private stillHovered = false;
+    private opened = false;
 
     constructor() {
-        new DragDrop($("#chat-box"), $("#chat-box-header"));
-        // send buttons
-        $('#chat-input').bind('keyup', (event) => { if (event.keyCode == 13) this.handleUserInput(event); });
-        $("#chat-submit").on("click", this.handleUserInput);
-
-        // setting chat background
-        // let bg = getCookie('chatBackground');
-        // if (bg) {
-        //     $("#chat-box-body").css("background-image", bg);
-        // } else {
-        //     let rand = (min, max) => Math.round(Math.random() * (max - min) + min);
-        //     $("#chat-box-body")
-        //         .css("background-image",
-        //              "url(/techbot/images/backgrounds/chat-background-"+rand(1, $("#chat-background-count").attr("data"))+".png)");
-        // }
-
-        // setup control panel
-        if (getCookie("saveChatSession") == "true") {
-            $("#chat-save-session").addClass("chat-settings-active");
-            this.loadChatHistory();
-        } else {
-            setCookie("saveChatSession", "false");
-            $("#chat-save-session").addClass("chat-settings-diactive");
-            this.companion = new Bot();
-        }
-
-        this.companion.on("managerReq", () => {
-            this.companion = new Manager();
-        })
-
+        super();
+        // TODO move to ChatSettings class
         $("#chat-save-session").on("click", () => {
             // TODO move to functions
             if (getCookie("saveChatSession") == "true") {
@@ -551,14 +433,216 @@ class Chat {
             }
         });
 
-        $("#chat-reset").on("click", () => this.resetChat());
+        $("#chat-reset").on("click", () => this.emit("reset"));
+        $("#chat-toggle").hover(
+            e => {
+                this.stillHovered = true;
+                if (this.opened) {
+                    this.show();
+                } else {
+                    setTimeout(() => {
+                        if (this.stillHovered) {
+                            this.opened = true
+                            this.show();
+                        }
+                    }, 1050)
+                }
+            }, e => {
+                this.stillHovered = false;
+                this.hide();
+            }
+        );
 
-        $("#chat-box").animate({opacity: 1}, 1000);
+        $("#chat-toggle-text").on("click", ev => this.emit("toggle"));
+
+        // hide
         $("#chat-toggle").css("left", -$("#chat-toggle").width());
-        adjustChatToggle(1000);
+        // show
+        this.adjust(1000);
+    }
 
-        // chat drag and effects
-        setupChatMovement();
+    show() {
+        $("#chat-toggle").stop().animate({ left: 0 }, 1500, "easeInOutQuint"); // TODO adjust duration by showed width
+    }
+
+    hide() {
+        $("#chat-toggle").stop().animate({ left: this.normalLeft }, 2000, "easeOutCubic", () => { this.opened = false; });
+    }
+
+    get normalLeft(): number {
+        return $("#chat-toggle-text").width() - $("#chat-toggle").width() + 4;
+    }
+
+    adjust(time = 0): void {
+        $("#chat-toggle").animate({left: this.normalLeft}, time);
+    }
+
+}
+
+// TOO EXTRA LARGE
+class Chat {
+    private companion: Companion;
+
+    private whileSending: boolean = false;
+    static lastMessageId: number = 0; // local message id, will not be synced with server
+    static chatHistory: Array<ChatMessage> = new Array();
+
+    private resizeLock: boolean = false;
+    private hidden: boolean = false;
+    readonly initialPosition = $("#chat-box").position();
+    readonly initialSize = { height: $("#chat-box").innerHeight(), width: $("#chat-box").innerWidth() };
+
+    private button: ChatButton;
+
+    constructor() {
+        this.button = new ChatButton();
+        this.button.on('reset', () => this.resetChat());
+        this.button.on('toggle', () => this.toggle());
+        // send buttons
+        $('#chat-input').bind('keyup', (event) => { if (event.keyCode == 13) this.handleUserInput(event); });
+        $("#chat-submit").on("click", this.handleUserInput);
+
+        // chat drag
+        new DragDrop($("#chat-box"), $("#chat-box-header"));
+
+        this.selectBackground();
+        this.setStratigy();
+        this.setupChatResize();
+
+        this.companion.on("managerReq", () => {
+            this.companion = new Manager();
+        })
+        this.companion.on("leave", () => {
+            this.companion = new Bot();
+        });
+        this.companion.on("closed", () => {
+            this.companion = new Bot();
+        });
+
+        // show chat
+        $("#chat-box").animate({opacity: 1}, 1000);
+    }
+
+    public hide() {
+        this.hidden = true;
+        $("#chat-box")
+            .stop()
+            .animate({
+                left: -$("#chat-box").width() - this.initialPosition.left,
+                top: this.initialPosition.top,
+                height: "toggle",
+                width: "toggle"
+            }, 1000, "easeOutQuad");
+    }
+
+    public show() {
+        this.hidden = false;
+        $("#chat-box")
+            .stop()
+            .animate({
+                left: this.initialPosition.left,
+                top: this.initialPosition.top,
+                height: "toggle",
+                width: "toggle"
+            }, 1000, "easeOutQuad");
+    }
+
+    public toggle() {
+        if (this.hidden) {
+            this.show();
+        } else {
+            this.hide();
+        }
+    }
+
+    private selectBackground() {
+        let bg = getCookie('chatBackground');
+        if (bg) {
+            $("#chat-box-body").css("background-image", bg);
+        } else {
+            let rand = (min, max) => Math.round(Math.random() * (max - min) + min);
+            $("#chat-box-body")
+                .css("background-image",
+                     "url(/rediirector/hosting-side/images/backgrounds/chat-background-"+2+".png)");
+        }
+
+    }
+
+    private setStratigy() {
+        if (getCookie("saveChatSession") == "true") {
+            $("#chat-save-session").addClass("chat-settings-active");
+            this.loadChatHistory();
+        } else {
+            setCookie("saveChatSession", "false");
+            $("#chat-save-session").addClass("chat-settings-diactive");
+            this.companion = new Bot();
+        }
+    }
+
+    private resizeChat(size: { width: number, height: number }, dur: number = 0, then = null) {
+        $("#chat-logs").animate({
+            height: size.height -
+                    $("#chat-box-header")[0].offsetHeight -
+                    $("#chat-input")[0].offsetHeight
+        }, dur, then);
+        $("#chat-box").animate({
+            width: size.width,
+            height: size.height
+        }, dur, then);
+    }
+
+    private setupChatResize() {
+        // reset to default
+        this.resizeChat({ width: $("#chat-box").width(), height: $("#chat-box").height() });
+        $("#chat-vertical-normal").css("display", "none");
+
+        // chat resizing buttons
+        $("#chat-vertical-maximize").on("click", () => {
+            if (!this.resizeLock) {
+                this.resizeLock = true;
+                $("#chat-vertical-maximize").css("display", "none");
+                $("#chat-vertical-normal").css("display", "block");
+
+                $("#chat-box").animate(
+                    {
+                        top: 0,
+                        left: 6
+                    }, 500,
+                    () => {
+                        this.resizeChat(
+                            {
+                                width: $("#chat-box").width(),
+                                height: window.innerHeight
+                            }, 1000,
+                            () => {
+                                this.resizeLock = false;
+                            });
+                    }
+                );
+            }
+        });
+        $("#chat-vertical-normal").on("click", () => {
+            if (!this.resizeLock) {
+                this.resizeLock = true;
+                $("#chat-vertical-maximize").css("display", "block");
+                $("#chat-vertical-normal").css("display", "none");
+
+                this.resizeChat(
+                    {
+                        width: this.initialSize.width,
+                        height: this.initialSize.height
+                    }, 1000,
+                    () => $("#chat-box").animate(
+                        {
+                            top: this.initialPosition.top,
+                            left: this.initialPosition.left
+                        }, 500,
+                        () => {
+                            this.resizeLock = false;
+                        })
+                );
+            }
+        });
     }
 
     // handleButtonClick(name, value, messageId) {
@@ -595,7 +679,7 @@ class Chat {
         }
     }
 
-    static appendMessage(arg: {message: ChatMessage, buttons?: ChatButton[]}, save = true) {
+    static appendMessage(arg: {message: ChatMessage, buttons?: ChatMessageButton[]}, save = true) {
         let type: string;
         switch (arg.message.from) {
             case "manager": {

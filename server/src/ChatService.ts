@@ -4,33 +4,33 @@ import express, { Express, Request, Response  } from 'express';
 import * as http from 'http';
 import { setTimeout } from 'timers';
 import * as ws from 'ws';
-import { Database, DatabaseBuffer, DatabaseChatEntry, DatabaseManagerEntry } from './database.js';
+import { Database, DatabaseBuffer, DatabaseChatEntry, DatabaseManagerEntry, DatabaseHistoryEntry } from './database.js';
 import { EventEmitter } from 'events';
+import * as evntss from 'events';
 import { randomUUID } from 'crypto';
 import { chatStatus } from './constants.js';
 
-class ChatHistory extends Array<ChatMessage> {
-    constructor() {
-        super();
-    }
+type ChatEvent = {
+    message: (message: DatabaseHistoryEntry) => void;
 }
 
-class Chat extends EventEmitter {
-    private history: ChatHistory;
-    private status: chatStatus;
+interface IChat {
+    on<U extends keyof ChatEvent>(event: U, listener: ChatEvent[U]): this;
+    off<U extends keyof ChatEvent>(event: U, listener: ChatEvent[U]): this;
+    emit<U extends keyof ChatEvent>(
+        event: U,
+        ...args: Parameters<ChatEvent[U]>
+    ): boolean;
+}
+
+class Chat extends EventEmitter implements IChat {
+    private managerId?: number;
 
     constructor(private socket: ws.WebSocket) {
         super();
-        this.history = new ChatHistory();
-        this.status = chatStatus.pending;
-
-        this.socket.on('close', (code, reason) => {
-            this.status = chatStatus.closed;
-            this.emit("destroy");
-        });
 
         this.socket.on('message', (data: ws.RawData) => {
-            this.emit('message', data.toString())
+            this.emit('message', JSON.parse(data.toString()));
         })
     }
 
@@ -38,61 +38,67 @@ class Chat extends EventEmitter {
         this.socket.close();
     }
 
-    get linked() {
-        return this.status == chatStatus.active;
+    linked() {
+        return this.managerId;
     }
 
     close() {
-        this.status = chatStatus.closed;
+        this.managerId = undefined;
         this.socket.close(321, "Chat completed by manager");
-        this.emit('destroy');
     }
 
-    accept(name: string) {
-        this.status = chatStatus.active;
-        this.socket.send(
-            JSON.stringify(
-                {
+    accept(managerId: number, name: string) {
+        this.managerId = managerId;
+        let msg: ServerMessage = {
                     event: "accepted",
-                    data: {
+                    payload: {
                         manager: name
                     }
-                }
-            )
-        )
+                };
+        this.socket.send( JSON.stringify(msg))
     }
 
     answer(message: ChatMessage) {
-        if (this.status = chatStatus.active) {
-            this.socket.send(
-                JSON.stringify(
-                    {
+        if (this.linked()) {
+            let msg: ServerMessage = {
                         event: "answer",
-                        data: {
+                        payload: {
                             message: message
                         }
                     }
-                )
-            )
+            this.socket.send(JSON.stringify(msg))
         } else {
             console.error("DBUG: trying answer to not active chat");
         }
     }
 }
 
-export class ChatServer extends EventEmitter {
+type ChatServerEvent = {
+    message: (message: DatabaseHistoryEntry) => void;
+    restoredChat: (hash: string) => void;
+    newChat: (hash: string) => void;
+    endChat: (hash: string, wasLinked: boolean) => void;
+}
+
+interface IChatServer {
+    on<U extends keyof ChatServerEvent>(event: U, listener: ChatServerEvent[U]): this;
+    off<U extends keyof ChatServerEvent>(event: U, listener: ChatServerEvent[U]): this;
+    emit<U extends keyof ChatServerEvent>(
+        event: U,
+        ...args: Parameters<ChatServerEvent[U]>
+    ): boolean;
+}
+
+export class ChatServer extends EventEmitter implements IChatServer {
     private listener: ws.WebSocketServer;
     private connections: Map<string, Chat>;
-    private chats: DatabaseBuffer<string, DatabaseChatEntry>;
+    private chats: DatabaseBuffer<DatabaseChatEntry>;
+    private chatsHistory: DatabaseBuffer<DatabaseHistoryEntry>;
 
     constructor() {
         super();
-        this.chats = new DatabaseBuffer({
-            insertQuery: "INSERT INTO Chats (hash) VALUES(?)",
-            deleteQuery: "DELETE FROM Chats WHERE hash=?",
-            selectQuery: "SELECT * FROM Chats WHERE hash=?",
-            updateQuery: "UPDATE Chats SET hash=?, managerId=? WHERE hash=?"
-        }, "hash", false);
+        this.chats = new DatabaseBuffer("Chats", [ "hash", "managerId" ], "hash", false);
+        this.chatsHistory = new DatabaseBuffer("History", [ "id", "chatHash", "from", "creator", "time", "text", "handled" ], "id");
         this.connections = new Map<string, Chat>();
 
         let app = express();
@@ -100,11 +106,12 @@ export class ChatServer extends EventEmitter {
         this.listener = new ws.WebSocketServer({ server });
 
         this.listener.on('error', (e) => console.error(e));
+        this.listener.on('close', () => console.log("closing"));
         this.listener.on('connection', (socket, request) => {
             console.log("New connections");
             // prepare
-            socket.once('message', async (msg: string) => {
-                console.log("New connections messaging: ", msg.toString);
+            socket.once('message', async (msg: ws.RawData) => {
+                console.log("New connections messaging: ", msg.toString());
                 let prepare = async (): Promise<{ hash: string, restored: boolean, connected?: number | null } | undefined> => {
                     let json: any;
 
@@ -116,7 +123,7 @@ export class ChatServer extends EventEmitter {
                     }
 
                     if (json.hash) { // try restore
-                        let found = await this.chats.get(json.hash);
+                        let found = await this.chats.get(json.hash).catch((e) => console.log(""));
                         if (!found) { // chat hash not exits
                             let l_entry: DatabaseChatEntry = {
                                 hash: randomUUID(),
@@ -143,7 +150,7 @@ export class ChatServer extends EventEmitter {
                         // TODO
                         socket.send(JSON.stringify({
                             event: "restored",
-                            data: {
+                            payload: {
                                 manager: "JOSDF"
                             }
                         }));
@@ -151,21 +158,35 @@ export class ChatServer extends EventEmitter {
                     } else {
                         socket.send(JSON.stringify({
                             event: "created",
-                            data: { hash: settings.hash }
+                            payload: { hash: settings.hash }
                         }));
                         this.emit('newChat', settings.hash);
                     }
                     let chat = new Chat(socket);
                     this.connections.set(settings.hash, chat);
-                    chat.on('message', (text: string) => {
-                        // @ts-ignore
-                        this.emit('message', settings.hash, text);
+                    chat.on('message', (ev) => {
+                        if (ev.event == "message") {
+                            let ev_msg: ChatMessage = ev.data.message;
+                            if (ev_msg) {
+                                let msg: DatabaseHistoryEntry = {
+                                    id: ev_msg.id,
+                                    chatHash: settings!.hash,
+                                    from: ev_msg.from,
+                                    creator: ev_msg.creator,
+                                    time: ev_msg.time,
+                                    text: ev_msg.text,
+                                    handled: Number(Boolean(chat.linked()))
+                                };
+                                this.chatsHistory.add(ev.data.message.id, msg);
+                                this.emit('message', settings!.hash, chat.linked(), msg);
+                            }
+                        } else {
+                            console.log("Unhenled message from chat: ", ev);
+                        }
                     })
-                    chat.on('destroy', () => {
-                        // @ts-ignore
-                        this.connections.delete(settings.hash);
-                        // @ts-ignore
-                        this.emit('chatEnd', settings.hash);
+                    socket.on('close', (code, reason) => {
+                        this.connections.delete(settings!.hash);
+                        this.emit('endChat', settings!.hash);
                     });
                 }
             })
@@ -176,16 +197,14 @@ export class ChatServer extends EventEmitter {
         });
     }
 
-    acceptChat(chatHash: string, manager: DatabaseManagerEntry): boolean {
+    acceptChat(chatHash: string, managerId: number, name: string): boolean {
         if (this.connections.has(chatHash)) {
             let chat = this.connections.get(chatHash);
-            // @ts-ignore
-            if (chat.linked) {
-
+            if (!chat!.linked()) {
+                this.chats.update(chatHash, { managerId: managerId })
+                chat!.accept(managerId, name);
+                return true;
             }
-            // @ts-ignore
-            chat.accept(manager);
-            return true;
         }
         return false;
     }
@@ -199,10 +218,12 @@ export class ChatServer extends EventEmitter {
     }
 
     answerTo(chatHash: string, message: ChatMessage): boolean {
-        if (this.connections.has(chatHash)) {
-            // @ts-ignore
-            this.connections.get(chatHash).answer(message);
-            return true;
+        let chat = this.connections.get(chatHash);
+        if (chat) {
+            if (chat.linked()) {
+                chat.answer(message);
+                return true;
+            }
         }
         return false;
     }

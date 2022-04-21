@@ -4,10 +4,10 @@
         "declaration": true,
         "outDir": "./bin",
         "allowJs": true,
-        "target": "ESNext",
-        "module": "ESNext",
+        "target": "es6",
         "esModuleInterop": true,
         "moduleResolution": "node",
+        "downlevelIteration": true,
         "resolveJsonModule": true
     },
     "include": [

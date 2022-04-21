@@ -14,7 +14,7 @@
 
 <div id="chat-box"  class="drag-notactive">
     <div id="chat-box-header" class="noselect">
-        Tech-chat
+        Rediirector
         <div class="zig-zag"></div>
         <div id="chat-manager-name">Tech-bot</div>
         <div id="chat-widnow-control-panel">

@@ -10,6 +10,7 @@
         "sqlite-sync": "^0.3.9",
         "sqlite3": "^5.0.3",
         "telegraf": "^4.7.0",
+        "ts-transformer-keys": "^0.4.3",
         "types": "^0.1.1"
     },
     "name": "ti-telegram-bot",

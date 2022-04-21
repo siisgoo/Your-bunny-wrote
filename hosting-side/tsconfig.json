@@ -3,7 +3,7 @@
         "preserveConstEnums": true,
         "outFile": "./chat.js",
         "allowJs": true,
-        "target": "ES6",
+        "target": "es6",
         "typeRoots": ["node_modules/@types"]
     },
     "removeComments": true,

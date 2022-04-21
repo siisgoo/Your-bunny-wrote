@@ -8,8 +8,8 @@ interface ChatMessage {
 }
 
 interface ServerMessage {
-    event: "";
-    payload?: any;
+    event: "answer" | "accepted" | "leaved" | "created" | "restored";
+    payload?: object;
 }
 
 type ServerDisconnectReason = "Timeout";
