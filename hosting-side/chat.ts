@@ -1,5 +1,6 @@
 const VERSION = "v0.1.2 beta";
 const botName = "Shady " + VERSION;
+const chatHeaderText = "Chat";
 const userIconPath = "/rediirector/hosting-side/images/avatars/user-icon.png";
 const botIconPath = "/rediirector/hosting-side/images/avatars/bot-icon.png";
 const notifySound = new Audio("/rediirector/hosting-side/sounds/chat-notify.mp3");

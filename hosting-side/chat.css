@@ -81,6 +81,7 @@ html.-is-locked {
     font-size:20px;
     padding-top:17px;
     cursor: pointer;
+    display: block;
 }
 
 #chat-widnow-control-panel {

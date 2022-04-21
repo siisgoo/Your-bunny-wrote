@@ -2,6 +2,8 @@ import * as fs from 'fs';
 import cache from 'node-cache';
 import { EventEmitter } from 'events';
 import sqlite3 from 'sqlite3';
+// import * as db from 'aloedb-node';
+
 // import keys from 'ts-transformer-keys';
 
 const CreateQueries = new Map<string, string>(
@@ -21,21 +23,17 @@ const CreateQueries = new Map<string, string>(
     ]
 );
 
-export interface DatabaseEntry {
-    id?: number,
-}
-
 export interface DatabaseHistoryEntry extends ChatMessage {
     chatHash: string,
     handled: number,
 }
 
-export interface DatabaseChatEntry extends DatabaseEntry {
+export interface DatabaseChatEntry {
     hash: string,
     managerId: number | null,
 }
 
-export interface DatabaseManagerEntry extends DatabaseEntry {
+export interface DatabaseManagerEntry {
     admin: number, // boolean c-style
     tgUserId: number,
     linkedChat: string | null,
