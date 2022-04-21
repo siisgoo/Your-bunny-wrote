@@ -55,7 +55,7 @@ class Chat extends EventEmitter implements IChat {
                         manager: name
                     }
                 };
-        this.socket.send( JSON.stringify(msg))
+        this.socket.send(JSON.stringify(msg))
     }
 
     answer(message: ChatMessage) {
@@ -186,7 +186,7 @@ export class ChatServer extends EventEmitter implements IChatServer {
                     })
                     socket.on('close', (code, reason) => {
                         this.connections.delete(settings!.hash);
-                        this.emit('endChat', settings!.hash);
+                        this.emit('endChat', settings!.hash, chat.linked());
                     });
                 }
             })

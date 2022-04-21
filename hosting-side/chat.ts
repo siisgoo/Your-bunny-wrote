@@ -2,6 +2,7 @@ const VERSION = "v0.1.2 beta";
 const botName = "Shady " + VERSION;
 const userIconPath = "/rediirector/hosting-side/images/avatars/user-icon.png";
 const botIconPath = "/rediirector/hosting-side/images/avatars/bot-icon.png";
+const notifySound = new Audio("/rediirector/hosting-side/sounds/chat-notify.mp3");
 
 let g_chat: Chat;
 
@@ -148,7 +149,8 @@ class DragDrop {
         this.OffsetX = item.position().left;
         this.OffsetY = item.position().top;
 
-        this.item['onPositionChanged'](this.updateOffset.bind(this));
+        // @ts-ignore
+        this.item.onPositionChanged(this.updateOffset.bind(this));
 
         this.container.on("touchstart", this.dragStart.bind(this));
         this.container.on("touchend",   this.dragEnd.bind(this));
@@ -227,43 +229,45 @@ interface botMessage {
     buttons?: ChatMessageButton[],
 }
 
+const botMessages: Record<string, botMessage> = {
+    startup:           { text: 'Я - ' + botName },
+    enterName:         { text: "Как к вам обращаться?" },
+    returnToManager:   { text: "Тут я бессилен, вызываю оператора." },
+    waitForManager:    { text: "Пожалуйста, подождите, вам скоро ответят." },
+    chatClosed:        { text: "Чат закрыт, надеюсь мы помогли вам." },
+    managerLeaved:     { text: "Менеджер вышел из чата, ищем вам другого." },
+    historyTurnDelete: { text: "Сообщения больше не будут сохраняться в историю" },
+    historyTurnSave:   { text: "Сообщения будут сохраняться в историю" },
+    internalError:     { text: "Ой-ой. Что то пошло не так, пожалуйста, презагрузите страницу." },
+    serviceNotAvalible:{ text: "Сервис временно не доступен." },
+    whatBotCan:        { text: "Я умею:</br>Вызывать оператора</br>...В разработке..." },
+
+    botCommands: {
+        text: "Чем буду полезен?",
+        buttons: [
+            { name: "Список возможностей", value: "_showWhatBotCan" },
+            { name: 'Вызвать оператора',   value: '_callManager'  }
+        ]
+    },
+}
+
 class Bot extends Companion {
     private onEnteringName: boolean = false; // trigger to redirect next user message to them name
 
-    private botMessages: Record<string, botMessage> = {
-        startup:           { text: 'Я - tech-bot.'},
-        enterName:         { text: "Как к вам обращаться?" },
-        returnToManager:   { text: "Тут я бессилен, вызываю оператора." },
-        waitForManager:    { text: "Пожалуйста, подождите, вам скоро ответят." },
-        chatClosed:        { text: "Чат закрыт, надеюсь мы помогли вам." },
-        managerLeaved:     { text: "Менеджер вышел из чата, ищем вам другого." },
-        historyTurnDelete: { text: "Сообщения больше не будут сохраняться в историю" },
-        historyTurnSave:   { text: "Сообщения будут сохраняться в историю" },
-        internalError:     { text: "Ой-ой. Что то пошло не так, пожалуйста, презагрузите страницу." },
-        whatBotCan:        { text: "Я умею:</br>Вызывать оператора</br>...В разработке..." },
-
-        botCommands: {
-            text: "Чем буду полезен?",
-            buttons: [
-                { name: "Список возможностей", value: "_showWhatBotCan" },
-                { name: 'Вызвать оператора',   value: '_callManager'  }
-            ]
-        },
-    }
-
-    constructor(showStartMsg: boolean = true) {
+    constructor(startMessage?: botMessage) {
         super();
         console.log("Bot online");
-        if (showStartMsg) {
-            this.appendMessage(this.botMessages.startup)
+
+        if (startMessage) {
+            this.appendMessage(startMessage);
         }
         $("#chat-manager-name").text(botName);
 
         if (!getCookie('customerName')) {
-            this.appendMessage(this.botMessages.enterName);
+            this.appendMessage(botMessages.enterName);
             this.onEnteringName = true;
         } else {
-            this.appendMessage(this.botMessages.botCommands);
+            this.appendMessage(botMessages.botCommands);
         }
     }
 
@@ -287,9 +291,9 @@ class Bot extends Companion {
         if (this.onEnteringName) { // setup client name
             setCookie('customerName', text);
             this.onEnteringName = false;
-            this.appendMessage(this.botMessages.botCommands);
+            this.appendMessage(botMessages.botCommands);
         } else { // answer
-            this.appendMessage(this.botMessages.returnToManager);
+            this.appendMessage(botMessages.returnToManager);
             this.emit('managerReq');
             // process logic
         }
@@ -332,19 +336,22 @@ class Reactor extends EventEmitter {
         }
         this.socket.onmessage = (ev: MessageEvent<string>) => {
             let data: ServerMessage = JSON.parse(ev.data.toString());
+            console.log(data);
             switch (data.event) {
                 case "created":
                     // @ts-ignore
                     setCookie("chatHash", data.payload.hash);
                     break;
                 case "restored":
+                    console.log("restored TODO");
                     break;
                 case "answer":
                     // @ts-ignore
-                    this.emit("message", data.payload.message);
+                    this.emit("answer", data.payload.message);
                     break;
                 case "accepted":
-                    this.emit("accepted", data.payload);
+                    // @ts-ignore
+                    this.emit("accepted", data.payload.manager);
                     break;
                 case "leaved":
                     this.emit("leaved", data.payload);
@@ -381,17 +388,34 @@ class Manager extends Companion {
         super();
         console.log("Manager online");
         this.reactor = new Reactor();
+
         this.reactor.on("accepted", (name: string) => {
             $("#chat-manager-name").text(name);
+            notifySound.play();
         });
-        this.reactor.on("leaved", () => console.log("Manager leaved chat"));
+
+        this.reactor.on("leaved", () => {
+            notifySound.play();
+            this.emit("ManagerLeaved");
+        });
+
+        this.reactor.on("closed", () => {
+            notifySound.play();
+            this.emit("ClosedByManager");
+        });
+
         this.reactor.on("created", (hash: string) => {
             setCookie("chatHash", hash)
         });
+
+        this.reactor.on("restored", (manager: string) => {
+            console.log("WARN not implemented restored func")
+        });
+
         this.reactor.on("answer", (msg: ChatMessage) => {
+            notifySound.play();
             Chat.appendMessage({ message: msg });
         });
-        this.reactor.on("closed", () => console.log("Manager closed chat"));
     }
 
     deconstructor() {
@@ -512,12 +536,18 @@ class Chat {
         this.companion.on("managerReq", () => {
             this.companion = new Manager();
         })
-        this.companion.on("leave", () => {
-            this.companion = new Bot();
+        this.companion.on("ManagerLeaved", () => {
+            this.companion = new Bot(botMessages.managerLeaved);
         });
-        this.companion.on("closed", () => {
-            this.companion = new Bot();
+        this.companion.on("ClosedByManager", () => {
+            this.companion = new Bot(botMessages.chatClosed);
         });
+        this.companion.on("NotAvalible", () => {
+            this.companion = new Bot(botMessages.serviceNotAvalible);
+        });
+        this.companion.on("error", () => {
+            this.companion = new Bot(botMessages.internalError);
+        })
 
         // show chat
         $("#chat-box").animate({opacity: 1}, 1000);
@@ -575,7 +605,7 @@ class Chat {
         } else {
             setCookie("saveChatSession", "false");
             $("#chat-save-session").addClass("chat-settings-diactive");
-            this.companion = new Bot();
+            this.companion = new Bot(botMessages.startup);
         }
     }
 
