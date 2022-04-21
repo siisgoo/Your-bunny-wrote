@@ -1,11 +1,5 @@
 const VERSION = "v0.1.2 beta";
 const botName = "Shady " + VERSION;
-const chatHeaderText = "Chat";
-const userIconPath = "/rediirector/hosting-side/images/avatars/user-icon.png";
-const botIconPath = "/rediirector/hosting-side/images/avatars/bot-icon.png";
-const notifySound = new Audio("/rediirector/hosting-side/sounds/chat-notify.mp3");
-
-let g_chat: Chat;
 
 interface cookieOptions {
     Domain?: string,
@@ -69,7 +63,7 @@ class EventEmitter {
     }
 }
 
-jQuery.fn['onPositionChanged'] = function (trigger, millis) {
+Object.defineProperty(jQuery.fn, 'onPositionChanged', function (trigger, millis) {
     if (millis == null) millis = 100;
     var o = $(this[0]); // our jquery object
     if (o.length < 1) return o;
@@ -95,7 +89,7 @@ jQuery.fn['onPositionChanged'] = function (trigger, millis) {
     }, millis);
 
     return o;
-};
+});
 
 function getCookie(name: string) {
     let matches = document.cookie.match(new RegExp(
@@ -220,222 +214,6 @@ class DragDrop {
     }
 };
 
-class Companion extends EventEmitter {
-    ask(text: string) {
-    }
-}
-
-interface botMessage {
-    text: string,
-    buttons?: ChatMessageButton[],
-}
-
-const botMessages: Record<string, botMessage> = {
-    startup:           { text: 'Я - ' + botName },
-    enterName:         { text: "Как к вам обращаться?" },
-    returnToManager:   { text: "Тут я бессилен, вызываю оператора." },
-    waitForManager:    { text: "Пожалуйста, подождите, вам скоро ответят." },
-    chatClosed:        { text: "Чат закрыт, надеюсь мы помогли вам." },
-    managerLeaved:     { text: "Менеджер вышел из чата, ищем вам другого." },
-    historyTurnDelete: { text: "Сообщения больше не будут сохраняться в историю" },
-    historyTurnSave:   { text: "Сообщения будут сохраняться в историю" },
-    internalError:     { text: "Ой-ой. Что то пошло не так, пожалуйста, презагрузите страницу." },
-    serviceNotAvalible:{ text: "Сервис временно не доступен." },
-    whatBotCan:        { text: "Я умею:</br>Вызывать оператора</br>...В разработке..." },
-
-    botCommands: {
-        text: "Чем буду полезен?",
-        buttons: [
-            { name: "Список возможностей", value: "_showWhatBotCan" },
-            { name: 'Вызвать оператора',   value: '_callManager'  }
-        ]
-    },
-}
-
-class Bot extends Companion {
-    private onEnteringName: boolean = false; // trigger to redirect next user message to them name
-
-    constructor(startMessage?: botMessage) {
-        super();
-        console.log("Bot online");
-
-        if (startMessage) {
-            this.appendMessage(startMessage);
-        }
-        $("#chat-manager-name").text(botName);
-
-        if (!getCookie('customerName')) {
-            this.appendMessage(botMessages.enterName);
-            this.onEnteringName = true;
-        } else {
-            this.appendMessage(botMessages.botCommands);
-        }
-    }
-
-    private appendMessage(msg: botMessage) {
-        Chat.appendMessage(
-            {
-                message: {
-                    id: -1,
-                    from: 'bot',
-                    text: msg.text,
-                    creator: botName,
-                    time: new Date().getTime()
-                },
-                buttons: (msg.buttons ? msg.buttons : null)
-            }
-        )
-    }
-
-    ask(text: string) {
-        let msg: ChatMessage;
-        if (this.onEnteringName) { // setup client name
-            setCookie('customerName', text);
-            this.onEnteringName = false;
-            this.appendMessage(botMessages.botCommands);
-        } else { // answer
-            this.appendMessage(botMessages.returnToManager);
-            this.emit('managerReq');
-            // process logic
-        }
-        return msg;
-    }
-}
-
-class Reactor extends EventEmitter {
-    protected url: string;
-    protected socket: WebSocket;
-
-    constructor() {
-        super();
-        this.url = "wss://f7cb-185-253-102-98.ngrok.io/ws";
-        console.log("Reactor connecting to ", this.url);
-        this.socket = new WebSocket(this.url);
-
-        this.socket.onerror = (e) => {
-            this.emit("error");
-        }
-        this.socket.onclose = (e) => {
-            switch (e.code) {
-                case 1000:
-                    this.emit("shutdown");
-                    break;
-                case 1011:
-                    this.emit("error");
-                    break;
-                case 1014:
-                    this.emit("notAvalible");
-                    break;
-                default:
-                    this.emit("shutdown");
-            }
-        }
-        this.socket.onopen = () => {
-            console.log("Reactor online");
-            this.emit("ready");
-            this.socket.send(JSON.stringify({ hash: getCookie("chatHash") }));
-        }
-        this.socket.onmessage = (ev: MessageEvent<string>) => {
-            let data: ServerMessage = JSON.parse(ev.data.toString());
-            console.log(data);
-            switch (data.event) {
-                case "created":
-                    // @ts-ignore
-                    setCookie("chatHash", data.payload.hash);
-                    break;
-                case "restored":
-                    console.log("restored TODO");
-                    break;
-                case "answer":
-                    // @ts-ignore
-                    this.emit("answer", data.payload.message);
-                    break;
-                case "accepted":
-                    // @ts-ignore
-                    this.emit("accepted", data.payload.manager);
-                    break;
-                case "leaved":
-                    this.emit("leaved", data.payload);
-                    break;
-                default:
-                    console.log("Unknown data from server: ", data)
-            }
-        }
-    }
-
-    deconstructor() {
-        this.disconnect();
-    }
-
-    disconnect() {
-        this.socket.close();
-    }
-
-    sendMessage(msg: ChatMessage) {
-        this.socket.send(JSON.stringify({
-            event: "message",
-            data: {
-                message: msg
-            }
-        }));
-    }
-}
-
-class Manager extends Companion {
-    private connected: boolean = false;
-    private reactor: Reactor;
-
-    constructor() {
-        super();
-        console.log("Manager online");
-        this.reactor = new Reactor();
-
-        this.reactor.on("accepted", (name: string) => {
-            $("#chat-manager-name").text(name);
-            notifySound.play();
-        });
-
-        this.reactor.on("leaved", () => {
-            notifySound.play();
-            this.emit("ManagerLeaved");
-        });
-
-        this.reactor.on("closed", () => {
-            notifySound.play();
-            this.emit("ClosedByManager");
-        });
-
-        this.reactor.on("created", (hash: string) => {
-            setCookie("chatHash", hash)
-        });
-
-        this.reactor.on("restored", (manager: string) => {
-            console.log("WARN not implemented restored func")
-        });
-
-        this.reactor.on("answer", (msg: ChatMessage) => {
-            notifySound.play();
-            Chat.appendMessage({ message: msg });
-        });
-    }
-
-    deconstructor() {
-
-    }
-
-    ask(text: string) {
-        let msg: ChatMessage;
-        this.reactor.sendMessage({
-            id: -1,
-            from: 'customer',
-            creator: getCookie('customerName'),
-            text: text,
-            time: new Date().getTime()
-        });
-        return msg;
-    }
-}
-
 class ChatButton extends EventEmitter {
     private stillHovered = false;
     private opened = false;
@@ -504,11 +282,21 @@ class ChatButton extends EventEmitter {
 
 }
 
-// TOO EXTRA LARGE
-class Chat {
-    private companion: Companion;
+class ChatHistory {
+    constructor() {
+        // @ts-ignore
+        window.indexedDB = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
 
-    private whileSending: boolean = false;
+        // @ts-ignore
+        window.IDBTransaction = window.IDBTransaction || window.webkitIDBTransaction || window.msIDBTransaction;
+
+        // @ts-ignore
+        window.IDBKeyRange = window.IDBKeyRange || window.webkitIDBKeyRange || window.msIDBKeyRange;
+    }
+}
+
+// TOO EXTRA LARGE
+class Chat extends EventEmitter {
     static lastMessageId: number = 0; // local message id, will not be synced with server
     static chatHistory: Array<ChatMessage> = new Array();
 
@@ -519,39 +307,31 @@ class Chat {
 
     private button: ChatButton;
 
+    private storage: ChatHistory;
+
     constructor() {
+        super();
         this.button = new ChatButton();
         this.button.on('reset', () => this.resetChat());
         this.button.on('toggle', () => this.toggle());
-        // send buttons
-        $('#chat-input').bind('keyup', (event) => { if (event.keyCode == 13) this.handleUserInput(event); });
-        $("#chat-submit").on("click", this.handleUserInput);
+        // indexDb.
 
         // chat drag
         new DragDrop($("#chat-box"), $("#chat-box-header"));
 
         this.selectBackground();
-        this.setStratigy();
         this.setupChatResize();
-
-        this.companion.on("managerReq", () => {
-            this.companion = new Manager();
-        })
-        this.companion.on("ManagerLeaved", () => {
-            this.companion = new Bot(botMessages.managerLeaved);
-        });
-        this.companion.on("ClosedByManager", () => {
-            this.companion = new Bot(botMessages.chatClosed);
-        });
-        this.companion.on("NotAvalible", () => {
-            this.companion = new Bot(botMessages.serviceNotAvalible);
-        });
-        this.companion.on("error", () => {
-            this.companion = new Bot(botMessages.internalError);
-        })
 
         // show chat
         $("#chat-box").animate({opacity: 1}, 1000);
+    }
+
+    deconstructor() {
+        if (getCookie("saveChatSession") == "false") {
+            this.resetChat();
+        } else {
+            this.saveChatHistory();
+        }
     }
 
     public hide() {
@@ -597,17 +377,6 @@ class Chat {
                      "url(/rediirector/hosting-side/images/backgrounds/chat-background-"+2+".png)");
         }
 
-    }
-
-    private setStratigy() {
-        if (getCookie("saveChatSession") == "true") {
-            $("#chat-save-session").addClass("chat-settings-active");
-            this.loadChatHistory();
-        } else {
-            setCookie("saveChatSession", "false");
-            $("#chat-save-session").addClass("chat-settings-diactive");
-            this.companion = new Bot(botMessages.startup);
-        }
     }
 
     private resizeChat(size: { width: number, height: number }, dur: number = 0, then = null) {
@@ -694,54 +463,26 @@ class Chat {
     //     // TODO remove buttons from chatHistory
     // }
 
-    handleUserInput(event) {
-        let msg: string = <string>$('#chat-input').val();
-        if (msg.length > 0) {
-            Chat.appendMessage({
-                message: {
-                    id: -1,
-                    creator: "Customer",
-                    time: new Date().getTime(),
-                    from: "customer",
-                    text: msg
-                }});
-            $("#chat-input").val('');
-            this.companion.ask(msg);
-        }
-    }
-
-    static appendMessage(arg: {message: ChatMessage, buttons?: ChatMessageButton[]}, save = true) {
+    public appendMessage(arg: {message: ChatMessage, buttons?: ChatMessageButton[]}, save = true) {
         let type: string;
-        switch (arg.message.from) {
-            case "manager": {
-                if (arg.message.creator == null) {
-                    arg.message.creator = 'Менеджер';
-                }
+        let avatar_url: string;
+        switch (arg.message.from.type) {
+            case "bot":
+                avatar_url = "/rediirector/hosting-side/images/avatars/bot-icon.png"
+            break;
+            case "manager":
                 type = "user";
+                // TODO icon load
                 break;
-            }
-            case "bot": {
-                arg.message.creator = botName;
-                arg.message.avatarUrl = botIconPath;
-                type = "user";
-                break;
-            }
-            case "customer": {
-                if (getCookie("customerName")) {
-                    arg.message.creator = getCookie("customerName");
-                } else {
-                    arg.message.creator = "Customer";
-                }
-                arg.message.avatarUrl = userIconPath;
+            case "customer":
                 type = "self";
+                avatar_url = "/rediirector/hosting-side/images/avatars/user-icon.png"
                 break;
-            }
-            default: {
+            default:
                 console.log("appendMessage: passed unknown msgFrom value - ", arg.message.from);
                 return; // TODO return error msg, handle err
-            }
         }
-        let time = new Date(arg.message.time).toLocaleTimeString();
+        let time = new Date(arg.message.stamp).toLocaleTimeString();
 
         Chat.lastMessageId++;
         arg.message.id = Chat.lastMessageId;
@@ -750,9 +491,9 @@ class Chat {
         }
 
         let str =
-                "<div id='cm-msg-" + arg.message.id + "' class=\"chat-msg " + arg.message.from + " " + type + "\">" +
+                "<div id='cm-msg-" + arg.message.id + "' class=\"chat-msg " + type + "\">" +
                     "<span class=\"msg-avatar\">" +
-                        "<img src=\"" + arg.message.avatarUrl + "\">" +
+                        "<img src=\"" + avatar_url + "\">" +
                     "<\/span>" +
                     "<div class=\"cm-msg-text\">" +
                         arg.message.text +
@@ -783,33 +524,33 @@ class Chat {
         $("#chat-logs").stop().animate({ scrollTop: $("#chat-logs")[0].scrollHeight }, 1000);
     }
 
-    saveChatHistory(): void { localStorage.setItem("chatHistory", JSON.stringify(Chat.chatHistory)); }
+    public saveChatHistory(): void { localStorage.setItem("chatHistory", JSON.stringify(Chat.chatHistory)); }
 
     // maybe use indexedDb instead?
-    loadChatHistory(): void {
+    public loadChatHistory(): void {
         let messages: string = localStorage.getItem("chatHistory");
         if (messages) {
             Chat.chatHistory = JSON.parse(messages);
             if (Chat.chatHistory.length > 0) {
-                Chat.chatHistory.forEach(m => Chat.appendMessage({ message: m }, false));
+                Chat.chatHistory.forEach(m => this.appendMessage({ message: m }, false));
 
                 if (getCookie("managerName")) {
                     if (getCookie("chatHash")) {
                         $("#chat-manager-name").text(getCookie("managerName"));
-                        this.companion = new Manager();
+                        this.emit("loadManager");
                     } else {
-                        this.companion = new Bot();
+                        this.emit("loadBot", false)
                     }
                 }
             } else {
-                this.companion = new Bot();
+                this.emit("loadBot");
             }
         } else {
-            this.companion = new Bot();
+            this.emit("loadBot");
         }
     }
 
-    resetChat(): void {
+    public resetChat(): void {
         localStorage.removeItem("chatHistory");
         Chat.lastMessageId = 0;
         Chat.chatHistory = [];
@@ -819,17 +560,295 @@ class Chat {
         $(".chat-msg").each(function(i, itm) { // TODO add animation
             $(this).remove();
         });
-        this.companion = new Bot();
     }
 }
 
-window.onload = () => { g_chat = new Chat(); };
+interface botMessage {
+    text: string,
+    buttons?: ChatMessageButton[],
+}
+
+const botMessages: Record<string, botMessage> = {
+    startup:           { text: 'Я - ' + botName },
+    enterName:         { text: "Как к вам обращаться?" },
+    returnToManager:   { text: "Тут я бессилен, вызываю оператора." },
+    waitForManager:    { text: "Пожалуйста, подождите, вам скоро ответят." },
+    chatClosed:        { text: "Чат закрыт, надеюсь мы помогли вам." },
+    managerLeaved:     { text: "Менеджер вышел из чата, ищем вам другого." },
+    historyTurnDelete: { text: "Сообщения больше не будут сохраняться в историю" },
+    historyTurnSave:   { text: "Сообщения будут сохраняться в историю" },
+    internalError:     { text: "Ой-ой. Что то пошло не так, пожалуйста, презагрузите страницу." },
+    serviceNotAvalible:{ text: "Сервис временно не доступен." },
+    whatBotCan:        { text: "Я умею:</br>Вызывать оператора</br>...В разработке..." },
+
+    botCommands: {
+        text: "Чем буду полезен?",
+        buttons: [
+            { name: "Список возможностей", value: "_showWhatBotCan" },
+            { name: 'Вызвать оператора',   value: '_callManager'  }
+        ]
+    },
+}
+
+class Bot extends EventEmitter {
+    private onEnteringName: boolean = false; // trigger to redirect next user message to them name
+
+    constructor(startMessage?: botMessage) {
+        super();
+        console.log("Bot online");
+
+        if (startMessage) {
+            // this.appendMessage(startMessage);
+        }
+        $("#chat-manager-name").text(botName);
+
+        if (!getCookie('customerName')) {
+            // this.appendMessage(botMessages.enterName);
+            this.onEnteringName = true;
+        } else {
+            // this.appendMessage(botMessages.botCommands);
+        }
+    }
+
+    // private appendMessage(msg: botMessage) {
+    //     Chat.appendMessage(
+    //         {
+    //             message: {
+    //                 id: -1,
+    //                 stamp: new Date().getDate(),
+    //                 from: {
+    //                     type: 'bot',
+    //                     name: botName,
+    //                 },
+    //                 text: msg.text,
+    //             },
+    //             buttons: (msg.buttons ? msg.buttons : null)
+    //         }
+    //     )
+    // }
+
+    ask(text: string) {
+        let msg: ChatMessage;
+        if (this.onEnteringName) { // setup client name
+            setCookie('customerName', text);
+            this.onEnteringName = false;
+            // this.appendMessage(botMessages.botCommands);
+        } else { // answer
+            // this.appendMessage(botMessages.returnToManager);
+            this.emit('managerReq');
+            // process logic
+        }
+        return msg;
+    }
+}
+
+class Reactor extends EventEmitter {
+    protected url: string;
+    protected socket: WebSocket;
+
+    constructor() {
+        super();
+        this.url = "wss://f7cb-185-253-102-98.ngrok.io/ws";
+        console.log("Reactor connecting to ", this.url);
+        this.socket = new WebSocket(this.url);
+
+        this.socket.onerror = (e) => {
+            this.emit("error");
+        }
+        this.socket.onclose = (e) => {
+            switch (e.code) {
+                case 1000:
+                    this.emit("shutdown");
+                    break;
+                case 1011:
+                    this.emit("error");
+                    break;
+                case 1014:
+                    this.emit("notAvalible");
+                    break;
+                default:
+                    this.emit("shutdown");
+            }
+        }
+        this.socket.onopen = () => {
+            console.log("Reactor online");
+            this.emit("ready");
+            this.socket.send(JSON.stringify({ hash: getCookie("chatHash") }));
+        }
+        this.socket.onmessage = (ev: MessageEvent<string>) => {
+            let data: ServerMessage = JSON.parse(ev.data.toString());
+            console.log(data);
+            switch (data.event) {
+                case "created":
+                    // @ts-ignore
+                    setCookie("chatHash", data.payload.hash);
+                    break;
+                case "restored":
+                    console.log("restored TODO");
+                    break;
+                case "answer":
+                    // @ts-ignore
+                    this.emit("answer", data.payload.message);
+                    break;
+                case "accepted":
+                    // @ts-ignore
+                    this.emit("accepted", data.payload.manager);
+                    break;
+                case "leaved":
+                    this.emit("leaved", data.payload);
+                    break;
+                default:
+                    console.log("Unknown data from server: ", data)
+            }
+        }
+    }
+
+    deconstructor() {
+        this.disconnect();
+    }
+
+    disconnect() {
+        this.socket.close();
+    }
+
+    sendMessage(msg: ChatMessage) {
+        this.socket.send(JSON.stringify({
+            event: "message",
+            data: {
+                message: msg
+            }
+        }));
+    }
+}
+
+class Manager extends EventEmitter {
+    private connected: boolean = false;
+    private reactor: Reactor;
+
+    constructor() {
+        super();
+        console.log("Manager online");
+        this.reactor = new Reactor();
+
+        this.reactor.on("accepted", (name: string) => {
+            $("#chat-manager-name").text(name);
+            notifySound.play();
+        });
+
+        this.reactor.on("leaved", () => {
+            notifySound.play();
+            this.emit("ManagerLeaved");
+        });
+
+        this.reactor.on("closed", () => {
+            notifySound.play();
+            this.emit("ClosedByManager");
+        });
+
+        this.reactor.on("created", (hash: string) => {
+            setCookie("chatHash", hash)
+        });
+
+        this.reactor.on("restored", (manager: string) => {
+            console.log("WARN not implemented restored func")
+        });
+
+        this.reactor.on("answer", (msg: ChatMessage) => {
+            notifySound.play();
+            // this.appendMessage({ message: msg });
+        });
+    }
+
+    deconstructor() {
+
+    }
+
+    ask(text: string) {
+        let msg: ChatMessage;
+        this.reactor.sendMessage({
+            id: -1,
+            stamp: new Date().getDate(),
+            from: {
+                type: 'customer',
+                name: getCookie('customerName'),
+            },
+            text: text,
+        });
+        return msg;
+    }
+}
+
+class Agregator extends EventEmitter {
+    private whileSending: boolean = false;
+    private chat: Chat;
+    private manager: Manager;
+    private bot: Bot;
+
+    private readonly userIconPath = "/rediirector/hosting-side/images/avatars/user-icon.png";
+    private readonly botIconPath = "/rediirector/hosting-side/images/avatars/bot-icon.png";
+    private readonly notifySound = new Audio("/rediirector/hosting-side/sounds/chat-notify.mp3");
+
+    constructor() {
+        super();
+
+        this.chat = new Chat();
+        this.bot = new Bot();
+        this.manager = new Manager();
+
+        $('#chat-input').bind('keyup', (event) => { if (event.keyCode == 13) this.handleUserInput(event); });
+        $("#chat-submit").on("click", this.handleUserInput);
+
+        if (getCookie("saveChatSession") == "true") {
+            $("#chat-save-session").addClass("chat-settings-active");
+            this.chat.loadChatHistory();
+        } else {
+            setCookie("saveChatSession", "false");
+            $("#chat-save-session").addClass("chat-settings-diactive");
+            // botMessages.startup);
+        }
+    }
+
+    handleUserInput(event) {
+        let msg: string = <string>$('#chat-input').val();
+        if (msg.length > 0) {
+            this.chat.appendMessage({
+                message: {
+                    id: 0,
+                    stamp: new Date().getDate(),
+                    from: {
+                        type: "customer",
+                        name: getCookie("customerName"),
+                    },
+                    text: msg
+                }});
+            $("#chat-input").val('');
+        }
+    }
+}
+
+window.onload = () => {
+    new Agregator();
+        // this.companion.on("managerReq", () => {
+        //     this.companion = new Manager();
+        // })
+        // this.companion.on("ManagerLeaved", () => {
+        //     this.companion = new Bot(botMessages.managerLeaved);
+        // });
+        // this.companion.on("ClosedByManager", () => {
+        //     this.companion = new Bot(botMessages.chatClosed);
+        // });
+        // this.companion.on("NotAvalible", () => {
+        //     this.companion = new Bot(botMessages.serviceNotAvalible);
+        // });
+        // this.companion.on("error", () => {
+        //     this.companion = new Bot(botMessages.internalError);
+        // })
+
+    // private setStratigy() {
+    // }
+
+};
 
 // delete chat session if started
 window.onunload = () => {
-    if (getCookie("saveChatSession") == "false") {
-        g_chat.resetChat();
-    } else {
-        g_chat.saveChatHistory();
-    }
 }

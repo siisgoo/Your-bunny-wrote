@@ -1,240 +1,291 @@
 import * as fs from 'fs';
-import cache from 'node-cache';
-import { EventEmitter } from 'events';
-import sqlite3 from 'sqlite3';
-// import * as db from 'aloedb-node';
+import { Database as ADatabase } from 'aloedb-node';
+import { assert, nullable, object, boolean, number, string, Infer } from 'superstruct';
+// import cache from 'node-cache';
 
-// import keys from 'ts-transformer-keys';
+import './../../shared-types';
 
-const CreateQueries = new Map<string, string>(
-    [
-        [
-            "History", // TODO id
-            'CREATE TABLE "History" ( "id" INTEGER NULL, "chatHash" TEXT NOT NULL, "from" TEXT NOT NULL, "creator" TEXT NOT NULL, "time" INTEGER NOT NULL, "text" TEXT NOT NULL, "handled" INTEGER NOT NULL);'
-        ],
-        [
-            "Chats",
-            'CREATE TABLE "Chats" ( "hash" TEXT NOT NULL UNIQUE, "managerId" INTEGER UNIQUE, PRIMARY KEY("hash"));'
-        ],
-        [
-            "Managers",
-            'CREATE TABLE "Managers" ( "id" INTEGER NOT NULL, "admin" INTEGER NOT NULL, "tgUserId" INTEGER NOT NULL UNIQUE, "linkedChat" TEXT NULL, "online" INTEGER NOT NULL, PRIMARY KEY("id" AUTOINCREMENT));'
-        ]
-    ]
-);
+// TODO add some caching abilities
 
-export interface DatabaseHistoryEntry extends ChatMessage {
-    chatHash: string,
-    handled: number,
+const storagePath = "./storage";
+
+if (!fs.existsSync(storagePath)) {
+    fs.mkdirSync(storagePath)
 }
 
-export interface DatabaseChatEntry {
+// TODO (its from shared-types.d.ts)
+// const SenderTypeArray = [ "bot", "customer", "manager" ];
+// const sendertype = () => define('sendertype', (value) => SenderTypeArray.includes(<string>value))
+
+// WARN: no change ChatMessage interface its must be served
+const MessageSign = object({
+    id: number(),
+    stamp: number(),
+    from: object({
+        type: string(),
+        name: string(),
+    }),
+    text: nullable(string()),
+    image: nullable(
+        object({
+            file_id: number(),
+            file_size: number(),
+        })
+    ),
+    file: nullable(
+        object({
+            file_id: number(),
+            file_size: number(),
+            mime: string(),
+        })
+    ),
+    voice: nullable(
+        object({
+            file_id: number(),
+            file_size: number(),
+            duration: number(),
+        })
+    ),
+    avatar: nullable(
+        object({
+            file_id: number()
+        })
+    ),
+    chatId: number(),
+    readed: boolean()
+})
+
+const ChatSign = object({
+    hash: string(),
+    initiator: string(),
+    managerId: nullable(number()),
+})
+
+const ManagerSign = object({
+    userId: number(),
+    isAdmin: boolean(),
+    linkedChat: nullable(string()),
+    online: boolean(),
+})
+
+const ChatEntryValidator = (document: any) => assert(document, ChatSign)
+const ManagerEntryValidator = (document: any) => assert(document, ManagerSign)
+const MessageEntryValidator = (document: any) => assert(document, MessageSign)
+
+const managers = new ADatabase<ManagerSchema>({
+    path: storagePath + "/managers.json",
+    pretty: true,
+    autoload: true,
+    immutable: true,
+    onlyInMemory: false,
+    schemaValidator: ManagerEntryValidator
+});
+
+const chats = new ADatabase<ChatSchema>({
+    path: storagePath + "/chats.json",
+    pretty: true,
+    autoload: true,
+    immutable: true,
+    onlyInMemory: false,
+    schemaValidator: ChatEntryValidator
+});
+
+const history = new ADatabase<MessageSchema>({
+    path: storagePath + "/chats.json",
+    pretty: true,
+    autoload: true,
+    immutable: true,
+    onlyInMemory: false,
+    schemaValidator: MessageEntryValidator,
+});
+
+export const Database = { managers, chats, history }
+
+type ChatSchema = Infer<typeof ChatSign>;
+type MessageSchema = Infer<typeof MessageSign>;
+type ManagerSchema = Infer<typeof ManagerSign>;
+
+export interface IMessage extends ChatMessage {
+    chatId: number,
+    readed: boolean,
+}
+
+export class Message {
+    id: number;
+    stamp: number;
+    from: {
+        // type: SenderType;
+        type: string;
+        name: string;
+    };
+
+    text: string | null;
+
+    image: {
+        file_id: number;
+        file_size: number;
+    } | null;
+
+    file: {
+        file_id: number;
+        file_size: number;
+        // mime: FileMimeType;
+        mime: string;
+    } | null;
+
+    voice: {
+        file_id: number;
+        file_size: number;
+        duration: number;
+    } | null;
+
+    avatar: {
+        file_id: number;
+    } | null;
+
+    chatId: number;
+    readed: boolean;
+
+    constructor(msg: IMessage) {
+        this.id = msg.id;
+        this.stamp = msg.stamp;
+        this.from = msg.from;
+        this.text = msg.text ?? "";
+        this.image = msg.image ?? null;
+        this.file = msg.file ?? null;
+        this.voice = msg.voice ?? null;
+        this.avatar = msg.avatar ?? null;
+
+        this.chatId = msg.chatId;
+        this.readed = msg.readed;
+    }
+
+    sync() {
+        history.insertOne(this);
+    }
+
+    remove() {
+        history.deleteOne({ id: this.id });
+    }
+
+    static async findOne(query: Partial<MessageSchema>): Promise<Message | null> {
+        const object = await history.findOne(query);
+        if (object) return new Message(object);
+        return null;
+    }
+
+    static async findMany(query: Partial<MessageSchema>): Promise<Message[]> {
+        const objects = await history.findMany(query);
+
+        return objects.map((obj) => {
+            return new Message(obj);
+        });
+    }
+}
+
+export interface IChat {
+    // id?: number,
     hash: string,
-    managerId: number | null,
+    initiator: string,
+    managerId?: number | null,
 }
 
-export interface DatabaseManagerEntry {
-    admin: number, // boolean c-style
-    tgUserId: number,
-    linkedChat: string | null,
-    online: number, // boolean c-style
-}
+export class Chat {
+    // id: number;
+    hash: string;
+    initiator: string;
+    managerId: number | null;
 
-const ShowTablesQuery = "SELECT name FROM sqlite_schema WHERE type IN ('table') AND name NOT LIKE 'sqlite_%';";
-
-// TODO add global mutex
-export class Database extends sqlite3.Database {
-    constructor() {
-        super("rediirector.db", sqlite3.OPEN_CREATE | sqlite3.OPEN_READWRITE);
-
-        this.on('error', (e: Error) => {throw e});
-
-        let exists = new Array<string>();
-        this.prepare(ShowTablesQuery)
-            .each((err: Error, row: any) => {
-                if (err) { throw err; }
-                exists.push(row.name);
-            }, (err: Error, count: number) => {
-                if (err) {
-                    throw "Cannot init Database: " + err;
-                }
-
-                (async () => {
-                    for (let [name, query] of CreateQueries) {
-                        if (!exists.includes(name)) {
-                            await this.runSync(query).catch((e: Error) => { throw e });
-                        }
-                    }
-                    this.emit('ready');
-                })()
-            })
+    constructor(chat: IChat) {
+        // this.id = chat.id ?? chats.count();
+        this.hash = chat.hash;
+        this.initiator = chat.initiator;
+        this.managerId = chat.managerId ?? null;
     }
 
-
-    deconstructor() {
-        this.close();
+    sync() {
+        chats.insertOne(this);
+        return this;
     }
 
-    async runSync(query: string) {
-        return new Promise((resolve, reject) => {
-            this.run(query, (err: Error) => {
-                if (err)
-                    reject(err.message)
-                else
-                    resolve(true)
-            })
-        })
+    remove() {
+        chats.deleteOne({ hash: this.hash });
+        return this;
     }
 
-    async allSync(query: string, params: any[]): Promise<any[]> {
-        return new Promise((resolve, reject) => {
-            this.all(query, params, (err: Error | null, rows: any[]) => {
-                if (err)
-                    reject(err);
-                else
-                    resolve(rows);
-            });
-        })
-    }
-}
+    // pushMessage(message: IMessage) {
+    // }
 
-// TODO sync with db only on destroy or unload from cache
-export class DatabaseBuffer<EntryType extends object> extends EventEmitter {
-    protected cache: cache;
-    protected db: Database;
-
-    // protected fields: (keyof EntryType)[];
-
-    protected insertQuery: string;
-    protected deleteQuery: string;
-    protected selectQuery: string;
-    protected updateQuery: string;
-
-    // TODO try to extract fields from EntryType
-    constructor(protected table: string, protected fields: Array<keyof EntryType>, protected keyName: keyof EntryType, protected useId: boolean = false) {
-        super();
-
-        // this.fields = keys<EntryType>();
-
-        let l_fileds = (this.useId ? this.fields : this.fields.filter(v => v != "id")).map(v => '"' + v + '"');
-        this.insertQuery = "INSERT INTO " + this.table + "(" + l_fileds.toString() + ") " +
-                           "VALUES(" + l_fileds.map(v => "?").toString() + ")";
-        this.deleteQuery = "DELETE FROM " + this.table + " WHERE \"" + this.keyName + "\"=?";
-        this.selectQuery = "SELECT * FROM " + this.table + " WHERE \"" + this.keyName + "\"=?";
-        this.updateQuery = "UPDATE " + this.table + " SET " +
-            l_fileds.map(v => v + "=?").toString() + " " +
-            "WHERE " + this.keyName + "=?";
-
-        this.cache = new cache({ stdTTL: 100, checkperiod: 1000, maxKeys: 100 });
-        // update on delete from cache
-        this.cache.on('del', (key: any, entry: EntryType) => {
-            // @ts-ignore
-            if (!this.useId) { delete entry.id }
-            let toWrite = Object.values(entry);
-            // @ts-ignore
-            toWrite.push(key);
-            this.db.prepare(this.updateQuery).run(toWrite).finalize();
-        });
-
-        this.db = new Database();
+    static async findOne(query: Partial<ChatSchema>): Promise<Chat | null> {
+        const object = await chats.findOne(query);
+        if (object) return new Chat(object);
+        return null;
     }
 
-    async add(key: any, entry: EntryType) {
-        console.log("Adding", this.table, key, entry);
-        if (this.cache.getStats().keys >= (this.cache.options.maxKeys || Number.MAX_SAFE_INTEGER)) {
-            // remove last entry
-            this.cache.del(
-                this.cache.keys()[this.cache.keys().length - 1]
-            )
-        }
-        this.cache.set(key, entry);
-        // @ts-ignore
-        if (!this.useId) { delete entry.id }
-        let toWrite = Object.values(entry);
-        console.log(this.insertQuery, toWrite);
-        return new Promise((resolve, reject) =>
-                this.db.prepare(this.insertQuery)
-                    .run(toWrite, (err: Error | null) => {
-                        if (err)
-                            reject(err);
-                        else
-                            resolve(true);
-                    }).finalize()
-        );
-    }
+    static async findMany(query: Partial<ChatSchema>): Promise<Chat[]> {
+        const objects = await chats.findMany(query);
 
-    async remove(key: any) {
-        console.log("Removing", this.table, key);
-        if (await this.get(key)) {
-            // @ts-ignore
-            this.cache.del(key);
-            await new Promise((resolve, reject) =>
-                    this.db.prepare(this.deleteQuery)
-                        .run(key, (err: Error | null) => {
-                            if (err)
-                                reject(err);
-                            else
-                                resolve(true);
-                        }).finalize()
-            );
-        }
-    }
-
-    async get(key: any): Promise<EntryType | undefined> {
-        console.log("Getting", this.table, key);
-        // @ts-ignore
-        if (this.cache.has(key)) {
-            // @ts-ignore
-            return this.cache.get(key);
-        }
-
-        // try localize in fs
-        return new Promise((resolve, reject) => {
-            this.db.all(this.selectQuery, [ key ], (err: Error | null, rows: any[]) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    if (rows.length > 0) {
-                        this.cache.set(rows[0][this.keyName], rows[0])
-                        resolve(rows[0]);
-                    } else {
-                        resolve(undefined);
-                    }
-                }
-            })
-        });
-    }
-
-    async update(key: any, entry: object) {
-        console.log("Updating", this.updateQuery, entry);
-        let e_entry = this.cache.get(key);
-        if (e_entry) {
-            this.cache.del(key);
-            this.cache.set(key, entry);
-            try {
-                let l_entry: EntryType = {
-                    // @ts-ignore
-                    ...e_entry,
-                    ...entry
-                }
-                // @ts-ignore
-                if (!this.useId) { delete l_entry.id }
-                let toWrite = Object.values(l_entry);
-                toWrite.push(key);
-                this.db.prepare(this.updateQuery).run(toWrite).finalize();
-            } catch(e) {
-
-            }
-        }
-    }
-
-    async find(field: string, value: number | string): Promise<EntryType[]> {
-        console.log("Finding", this.table);
-        return new Promise((resolve, reject) => {
-            this.db.all("SELECT * FROM " + this.table + " WHERE \"" + field + "\"=?", value, (err: Error, rows: any[]) => {
-                if (err) { console.log("JOP", err); reject(err) }
-                else resolve(rows)
-            })
+        return objects.map((obj) => {
+            return new Chat(obj);
         });
     }
 }
+
+export interface IManager {
+    userId: number; // telegram user id
+    isAdmin: boolean;
+    linkedChat: string | null;
+    online: boolean;
+}
+
+export class Manager {
+    userId: number; // telegram user id
+    isAdmin: boolean;
+    linkedChat: string | null;
+    online: boolean;
+
+    constructor(mngr: IManager) {
+        this.userId = mngr.userId;
+        this.isAdmin = mngr.isAdmin;
+        this.linkedChat = mngr.linkedChat;
+        this.online = mngr.online;
+    }
+
+    sync() {
+        return managers.insertOne(this);
+    }
+
+    remove() {
+        return managers.deleteOne({ userId: this.userId });
+    }
+
+    // TODO make linkToChat as an object and choose sync by objec creation
+    linkToChat(hash: string) {
+        this.linkedChat = hash;
+        return managers.updateOne({ linkedChat: hash }, this);
+    }
+
+    unlinkChat() {
+        this.linkedChat = null;
+        return managers.updateOne({ linkedChat: null }, this);
+    }
+
+    static async findOne(query: Partial<IManager>): Promise<Manager | null> {
+        const object = await managers.findOne(query);
+        if (object) return new Manager(object);
+        return null;
+    }
+
+    static async findMany(query: Partial<IManager>): Promise<Manager[]> {
+        const objects = await managers.findMany(query);
+
+        return objects.map((obj) => {
+            return new Manager(obj);
+        });
+    }
+}
+
+// TODO purpose - delete emty chats and split or delete old messages
+// class Cleaner {
+
+// }

@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+        "strict": true,
+        "declaration": true,
+        "outDir": "./bin",
+        "allowJs": true,
+        "target": "es6",
+        "esModuleInterop": true,
+        "moduleResolution": "node",
+        "downlevelIteration": true,
+        "resolveJsonModule": true
+    },
+    "include": [
+        "./src/**/*"
+    ],
+    "files": [
+        "./../shared-types.d.ts"
+    ],
+    "removeComments": true
+}
