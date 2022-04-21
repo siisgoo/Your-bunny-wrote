@@ -37,9 +37,27 @@ interface ChatMessage {
 
 type ServerEvent = "answer" | "accepted" | "leaved" | "created" | "restored";
 
+type SEAnswer = {
+    message: ChatMessage
+}
+
+type SEAccepted = {
+    manager: string,
+}
+
+type SELeaved = { }
+
+type SECreated = {
+    hash: string
+}
+
+type SERestored = {
+    manager: string,
+}
+
 interface ServerMessage {
     event: ServerEvent;
-    payload?: object;
+    payload?: SEAnswer | SEAccepted | SELeaved | SECreated | SERestored;
 }
 
 type ServerDisconnectReason = "Timeout" | "ClosedByManager";
