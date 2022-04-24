@@ -43,19 +43,19 @@ export class BotService extends EventEmitter {
         this.chatService.onChatMessage = async (chat: Chat, message: ChatMessage) => {
             if (chat.managerId) { // mean connected?
                 this.bot.telegram.sendMessage(chat.managerId, message.from.name + ":\n" + message.text);
-                if (message.attachments.length) {
-                    message.attachments.forEach(async (a) => {
-                        switch (a.file_mime) {
-                            // case "jpeg":
-                                // this.bot.telegram.sendPhoto(Number(chat.managerId), a.);
-                                // break;
-                            // case "df":
-                            //     break;
-                            default:
-                                console.error("DEBUG: unknown message attachment mime passed: ", a.file_mime);
-                        }
-                    })
-                }
+                // if (message.attachments.length) {
+                //     message.attachments.forEach(async (a) => {
+                //         switch (a.file_mime) {
+                //             // case "jpeg":
+                //                 // this.bot.telegram.sendPhoto(Number(chat.managerId), a.);
+                //                 // break;
+                //             // case "df":
+                //             //     break;
+                //             default:
+                //                 console.error("DEBUG: unknown message attachment mime passed: ", a.file_mime);
+                //         }
+                //     })
+                // }
             }
         }
 
@@ -185,7 +185,7 @@ export class BotService extends EventEmitter {
                         type: 'manager'
                     },
                     text: ctx.message.text,
-                    attachments: []
+                    // attachments: []
                 });
             } else {
                 let msg = await ctx.reply("You are not connected to chat, those messages will be deleted");

@@ -1,4 +1,4 @@
-import { ClientChatMessage } from './Schemas/ChatMessage.js'
+import { ChatMessage } from './Schemas/ChatMessage.js'
 // import { ManagerSchema } from './database.js'
 
 //export interface Response<T extends keyof EventsMap> {
@@ -10,7 +10,7 @@ import { ClientChatMessage } from './Schemas/ChatMessage.js'
 
 export interface TargetMap extends Record<string, object> {
     'message': {
-        message: ClientChatMessage
+        message: ChatMessage
     },
     'managerRequest': { },
     'getOnline': {  },

@@ -1,37 +1,46 @@
-import { Infer, nullable, array, enums, object, number, string } from 'superstruct'
-import { FileSign, FileMimeSign } from './File'
+import { optional, array, Infer, enums, object, number, string } from 'superstruct'
+// import { FileSign, FileMimeSign } from './File'
 
-const SenderTypeSign = enums([ "bot",  "customer",  "manager" ]);
+const SenderSign = enums([ "bot",  "customer",  "manager" ]);
 
 export const ChatMessageSign = object({
     id: number(),
     stamp: number(),
     from: object({
-        type: SenderTypeSign,
+        type: SenderSign,
         name: string()
     }),
-    text: nullable(string()),
+    text: string(),
 
-    attachments: array( FileSign )
+    buttons: optional(
+        array(
+            object({
+                name: string(),
+                value: string(),
+            })
+        )
+    )
+
+    // attachments: array( FileSign )
 })
 
 export type ChatMessage = Infer<typeof ChatMessageSign>;
 
-export const ClientChatMessageSign = object({
-    id: number(),
-    stamp: number(),
-    from: object({
-        type: SenderTypeSign,
-        name: string()
-    }),
-    text: nullable(string()),
+// export const ClientChatMessageSign = object({
+//     id: number(),
+//     stamp: number(),
+//     from: object({
+//         type: SenderTypeSign,
+//         name: string()
+//     }),
+//     text: string(),
 
-    attachments: array(
-        object({
-            data: string(),
-            mime: FileMimeSign
-        })
-    )
-})
+//     // attachments: array(
+//     //     object({
+//     //         data: string(),
+//     //         mime: FileMimeSign
+//     //     })
+//     // )
+// })
 
-export type ClientChatMessage = Infer<typeof ClientChatMessageSign>
+// export type ClientChatMessage = Infer<typeof ClientChatMessageSign>
