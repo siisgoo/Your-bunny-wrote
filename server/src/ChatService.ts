@@ -1,216 +1,219 @@
-import express, { Express, Request, Response  } from 'express';
-import * as http from 'http';
-// import { setTimeout } from 'timers';
-import * as ws from 'ws';
-import { Database, Chat } from './database.js';
-import { EventEmitter } from 'events';
-import { randomUUID } from 'crypto';
+// @ts-ignore
+import express, { Request, Response  } from 'express'
+import * as http from 'http'
+import * as ws from 'ws'
+import { Database, Chat, ChatSchema, Manager } from './database.js'
+import { ManagerSchema } from './Schemas/Manager'
+import { Config } from './Config.js'
+import { ChatMessage } from './Schemas/ChatMessage'
 
-type ChatConnectionEvent = {
-    message: (message: ChatMessage) => void;
-}
+// import { Response as ChatResponse } from './Events.js';
 
-interface IChatConnection {
-    on<U extends keyof ChatConnectionEvent>(event: U, listener: ChatConnectionEvent[U]): this;
-    off<U extends keyof ChatConnectionEvent>(event: U, listener: ChatConnectionEvent[U]): this;
-    emit<U extends keyof ChatConnectionEvent>(event: U, ...args: Parameters<ChatConnectionEvent[U]>): boolean;
-}
+class ChatConnection extends Chat {
+    public onMessage: (msg: ChatMessage) => void                = () => {}
+    public onDisconnect: (code: number, reason: Buffer) => void = () => {}
+    public onManagerRequest: () => void                         = () => {}
 
-class ChatConnection extends EventEmitter implements IChatConnection {
-    private managerId?: number;
+    constructor(private socket: ws.WebSocket, chat: ChatSchema) {
+        super(chat);
 
-    constructor(private socket: ws.WebSocket) {
-        super();
+        this.socket.on("close", this.onDisconnect);
 
-        this.socket.on('message', (data: ws.RawData) => {
-            this.emit('message', JSON.parse(data.toString()));
+        this.socket.on('message', async (data: ws.RawData) => {
+            let req = JSON.parse(data.toString());
+            switch (req.target) {
+                case "message": {
+                    if (req.payload.message) {
+                        this.onMessage(req.payload.message);
+                    } else {
+                        console.error("DEBUG: no message payload on targeting message");
+                    }
+                    break;
+                }
+                case "managerRequest": {
+                    this.onManagerRequest();
+                    break;
+                }
+                case "getOnline": {
+                    let res = {
+                        event: "onlineCount",
+                        payload: { count: (await Database.managers.findMany({ online: true })).length }
+                    }
+                    this.socket.send(JSON.stringify(res));
+                    break;
+                }
+                default:
+                    console.log("Unknown target request from chat: ", this.hash, " :", req.target);
+            }
         })
     }
 
+    // private async sync() {
+    //     return super.sync();
+    // }
+
+    // private async remove() {
+    //     return super.remove();
+    // }
+
     deconstructor() {
-        this.socket.close();
     }
 
-    linked() {
-        return this.managerId;
+    async close() {
+        this.socket.close(321, "Chat close by manager");
+        this.managerId = null;
+        await this.sync();
     }
 
-    close() {
-        this.managerId = undefined;
-        this.socket.close(321, "Chat completed by manager");
-    }
-
-    accept(managerId: number, name: string) {
-        this.managerId = managerId;
-        let msg: ServerMessage = {
-                    event: "accepted",
-                    payload: {
-                        manager: name
-                    }
-                };
+    async accept(manager: ManagerSchema) {
+        this.managerId = manager.userId;
+        await this.sync();
+        let msg = {
+            event: "accept",
+            payload: { manager: manager } }; // TODO
         this.socket.send(JSON.stringify(msg))
     }
 
-    answer(message: ChatMessage) {
-        if (this.linked()) {
-            let msg: ServerMessage = {
-                        event: "answer",
-                        payload: {
-                            message: message
-                        }
-                    }
+    async answer(message: ChatMessage) {
+        if (this.managerId) {
+            let msg = {
+                event: "answer",
+                payload: { message: message } }
+            // TODO message.readed not used
+            await this.appendHistory(message, true);
             this.socket.send(JSON.stringify(msg))
+            return true;
         } else {
-            console.error("DBUG: trying answer to not active chat");
+            return false
         }
     }
 }
 
-type ChatServerEvent = {
-    message: (message: ChatMessage) => void;
-    restoredChat: (hash: string) => void;
-    newChat: (hash: string) => void;
-    endChat: (hash: string, wasLinked: boolean) => void;
-}
-
-interface IChatServer {
-    on<U extends keyof ChatServerEvent>(event: U, listener: ChatServerEvent[U]): this;
-    off<U extends keyof ChatServerEvent>(event: U, listener: ChatServerEvent[U]): this;
-    emit<U extends keyof ChatServerEvent>(
-        event: U,
-        ...args: Parameters<ChatServerEvent[U]>
-    ): boolean;
-}
-
-export class ChatServer extends EventEmitter implements IChatServer {
+export class ChatServer {
     private listener: ws.WebSocketServer;
     private HttpServer: http.Server;
     private connections: Map<string, ChatConnection>;
 
+    public errorHandler: (e: Error) => void                          = (e) => console.log(e);
+    public closeHandler: () => void                                  = () => console.log("Chat server shutdowned");
+    public onChatManagerRequest: (chat: Chat) => void                = () => {}
+    /** @param waitReq true if chat page only reloading and customer issue not closed, false if chat member leave chat */
+    public onChatClosed: (chat: Chat, waitReq: boolean) => void      = () => {}
+    public onChatMessage: (chat: Chat, message: ChatMessage) => void = () => {}
+
     constructor() {
-        super();
         this.connections = new Map<string, ChatConnection>();
 
         let app = express();
         this.HttpServer = new http.Server(app);
 
-        this.listener = new ws.WebSocketServer();
+        this.listener = new ws.WebSocketServer({ server: this.HttpServer });
 
-        this.listener.on('error', (e) => console.error(e));
-        this.listener.on('close', () => console.log("closing"));
-
-        this.listener.on('connection', (socket, request) => {
-            console.log("New connections");
-            // prepare TODO set timeout for get first message
-            socket.once('message', async (msg: ws.RawData) => {
-                console.log("New connections messaging: ", msg.toString());
-
-                let json = JSON.parse(msg.toString());
-
-                if (json.hash) { // try restore
-                    let found = await this.chats.get(json.hash).catch((e) => console.log(""));
-                    if (!found) { // chat hash not exits
-                    } else { // restore
-                    }
-                } else { // new client
-                }
-
-                if (settings.restored) {
-                    // TODO
-                    socket.send(JSON.stringify({
-                        event: "restored",
-                        payload: {
-                            manager: "JOSDF"
-                        }
-                    }));
-                    this.emit('restoredChat', settings.hash);
-                } else {
-                    socket.send(JSON.stringify({
-                        event: "created",
-                        payload: { hash: settings.hash }
-                    }));
-                    this.emit('newChat', settings.hash);
-                }
-                let connection = new ChatConnection(socket);
-                this.connections.set(settings.hash, connection);
-                chat.on('message', (ev) => {
-                    if (ev.event == "message") {
-                        let ev_msg: ChatMessage = ev.data.message;
-                        if (ev_msg) {
-                            let msg: DatabaseHistoryEntry = {
-                                id: ev_msg.id,
-                                chatHash: settings!.hash,
-                                from: ev_msg.from,
-                                creator: ev_msg.creator,
-                                time: ev_msg.time,
-                                text: ev_msg.text,
-                                handled: Number(Boolean(chat.linked()))
-                            };
-                            this.chatsHistory.add(ev.data.message.id, msg);
-                            this.emit('message', settings!.hash, chat.linked(), msg);
-                        }
-                    } else {
-                        console.log("Unhenled message from chat: ", ev);
-                    }
-                })
-                socket.on('close', (code, reason) => {
-                    this.connections.delete(settings!.hash);
-                    this.emit('endChat', settings!.hash, chat.linked());
-                });
-
-            })
-        })
-
+        this.listener.on('error', this.errorHandler.bind(this));
+        this.listener.on('close', this.closeHandler.bind(this));
+        this.listener.on('connection', this.connHandler.bind(this));
     }
 
     async start() {
-        this.HttpServer.listen(7900, () => {
+        this.HttpServer.listen(Config().server.port, () => {
             console.log("Starting relay server")
         });
+
+        // this.HttpServer.on("upgrade", (req, socket, head) => {
+
+        // })
     }
 
     async stop() {
+        for await (let [,conn] of this.connections) {
+            await conn.close();
+        }
         await Database.chats.updateMany(() => true, { managerId: null });
         await Database.chats.save();
+        await Database.history.save();
     }
 
-    acceptChat(chatHash: string, managerId: number, name: string): boolean {
+    private connHandler(socket: ws.WebSocket) {
+            // prepare TODO set timeout for get first message
+            socket.once('message', async (msg: ws.RawData) => {
+                let json = JSON.parse(msg.toString());
+
+                if (!json.initiator) {
+                    // assert
+                }
+
+                // check chat for existance in database
+                let chat = await Chat.findOne({ hash: json.hash });
+                if (!chat) {
+                    chat = new Chat({ initiator: json.initiator });
+                    await chat.sync();
+                }
+
+                let response;
+
+                if (chat.managerId) {
+                    response = {
+                        event: "restored",
+                        payload: { // avoiding ts warnings, manager must exists if db is not currupted
+                            manager: <ManagerSchema>( await Manager.findOne({ userId: chat.managerId }) )
+                        }
+                    }
+                } else {
+                    response = {
+                        event: "created",
+                        payload: { hash: chat.hash }
+                    };
+                }
+
+                socket.send(JSON.stringify(response));
+
+                let connection = new ChatConnection(socket, chat);
+                this.connections.set(chat.hash, connection);
+
+                connection.onMessage = (msg) => this.onChatMessage(connection, msg);
+                connection.onManagerRequest = () => this.onChatManagerRequest(connection);
+                connection.onDisconnect = (code) => {
+                    // @ts-ignore
+                    this.onChatClosed(chat, code === 3213); // TODO code
+                    this.connections.delete(chat!.hash);
+                }
+            })
+    }
+
+    enterChat(chatHash: string, manager: ManagerSchema): boolean {
         if (this.connections.has(chatHash)) {
             let chat = this.connections.get(chatHash);
-            if (!chat!.linked()) {
-                Database.chats.updateOne({ hash: chatHash }, { managerId: managerId })
-                chat!.accept(managerId, name);
+            if (!chat!.managerId) {
+                Database.chats.updateOne({ hash: chatHash }, { managerId: manager.userId })
+                chat!.accept(manager);
                 return true;
             }
         }
         return false;
     }
 
-    closeChat(chatHash: string) {
+    async closeChat(chatHash: string) {
         let chat = this.connections.get(chatHash);
-        if (chat!.linked()) {
-            Database.chats.updateOne({ hash: chatHash }, { managerId: null });
+        if (chat!.managerId) {
             chat!.close();
             return true;
         }
         return false;
     }
 
-    leaveChat(chatHash: string) {
+    async leaveChat(chatHash: string) {
         let chat = this.connections.get(chatHash);
-        if (chat!.linked()) {
+        if (chat!.managerId) {
+            // await chat.leave();
             return true;
         }
         return false;
     }
 
-    answerTo(chatHash: string, message: ChatMessage): boolean {
+    async answerTo(chatHash: string, message: ChatMessage): Promise<boolean> {
         let chat = this.connections.get(chatHash);
         if (chat) {
-            if (chat.linked()) {
-                chat.answer(message);
-                return true;
-            }
+            return await chat.answer(message);
         }
         return false;
     }

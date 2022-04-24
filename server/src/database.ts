@@ -1,58 +1,24 @@
-import * as fs from 'fs';
-import { Database as ADatabase } from 'aloedb-node';
-import { assert, nullable, object, boolean, number, string, Infer } from 'superstruct';
+import * as fs from 'fs'
+import { Database as ADatabase } from 'aloedb-node'
+import { assert, nullable, object, boolean, number, string, Infer } from 'superstruct'
+import { randomUUID } from 'crypto'
+import { Config } from './Config'
 // import cache from 'node-cache';
 
-import './../../shared-types';
+import { FileSign } from './Schemas/File'
+import { ManagerSign, ManagerSchema, IManager } from './Schemas/Manager'
+import { ChatMessage, ChatMessageSign } from './Schemas/ChatMessage'
 
 // TODO add some caching abilities
 
-const storagePath = "./storage";
-
-if (!fs.existsSync(storagePath)) {
-    fs.mkdirSync(storagePath)
+if (!fs.existsSync(Config().server.database.path)) {
+    fs.mkdirSync(Config().server.database.path, { recursive: true })
 }
 
-// TODO (its from shared-types.d.ts)
-// const SenderTypeArray = [ "bot", "customer", "manager" ];
-// const sendertype = () => define('sendertype', (value) => SenderTypeArray.includes(<string>value))
-
-// WARN: no change ChatMessage interface its must be served
 const MessageSign = object({
-    id: number(),
-    stamp: number(),
-    from: object({
-        type: string(),
-        name: string(),
-    }),
-    text: nullable(string()),
-    image: nullable(
-        object({
-            file_id: number(),
-            file_size: number(),
-        })
-    ),
-    file: nullable(
-        object({
-            file_id: number(),
-            file_size: number(),
-            mime: string(),
-        })
-    ),
-    voice: nullable(
-        object({
-            file_id: number(),
-            file_size: number(),
-            duration: number(),
-        })
-    ),
-    avatar: nullable(
-        object({
-            file_id: number()
-        })
-    ),
-    chatId: number(),
-    readed: boolean()
+    message: ChatMessageSign,
+    chatHash: string(),
+    readed: boolean(),
 })
 
 const ChatSign = object({
@@ -61,19 +27,16 @@ const ChatSign = object({
     managerId: nullable(number()),
 })
 
-const ManagerSign = object({
-    userId: number(),
-    isAdmin: boolean(),
-    linkedChat: nullable(string()),
-    online: boolean(),
-})
+export type ChatSchema = Infer<typeof ChatSign>;
+export type MessageSchema = Infer<typeof MessageSign>;
 
 const ChatEntryValidator = (document: any) => assert(document, ChatSign)
 const ManagerEntryValidator = (document: any) => assert(document, ManagerSign)
 const MessageEntryValidator = (document: any) => assert(document, MessageSign)
+const FileEntryValidator = (document: any) => assert(document, FileSign)
 
 const managers = new ADatabase<ManagerSchema>({
-    path: storagePath + "/managers.json",
+    path: Config().server.database.path + "/managers.json",
     pretty: true,
     autoload: true,
     immutable: true,
@@ -82,7 +45,7 @@ const managers = new ADatabase<ManagerSchema>({
 });
 
 const chats = new ADatabase<ChatSchema>({
-    path: storagePath + "/chats.json",
+    path: Config().server.database.path + "/chats.json",
     pretty: true,
     autoload: true,
     immutable: true,
@@ -91,7 +54,7 @@ const chats = new ADatabase<ChatSchema>({
 });
 
 const history = new ADatabase<MessageSchema>({
-    path: storagePath + "/chats.json",
+    path: Config().server.database.path + "/chats.json",
     pretty: true,
     autoload: true,
     immutable: true,
@@ -99,78 +62,58 @@ const history = new ADatabase<MessageSchema>({
     schemaValidator: MessageEntryValidator,
 });
 
-export const Database = { managers, chats, history }
+const files = new ADatabase<MessageSchema>({
+    path: Config().server.database.path + "/files.json",
+    pretty: true,
+    autoload: true,
+    immutable: true,
+    onlyInMemory: false,
+    schemaValidator: FileEntryValidator,
+});
 
-type ChatSchema = Infer<typeof ChatSign>;
-type MessageSchema = Infer<typeof MessageSign>;
-type ManagerSchema = Infer<typeof ManagerSign>;
+export const Database = { managers, chats, history, files }
 
-export interface IMessage extends ChatMessage {
-    chatId: number,
-    readed: boolean,
-}
+// TODO purpose - delete emty chats and split or delete old messages
+// class Cleaner {
 
-export class Message {
-    id: number;
-    stamp: number;
-    from: {
-        // type: SenderType;
-        type: string;
-        name: string;
-    };
+// }
 
-    text: string | null;
+// export interface IFile {
 
-    image: {
-        file_id: number;
-        file_size: number;
-    } | null;
+// }
 
-    file: {
-        file_id: number;
-        file_size: number;
-        // mime: FileMimeType;
-        mime: string;
-    } | null;
+// export class File implements IFile {
 
-    voice: {
-        file_id: number;
-        file_size: number;
-        duration: number;
-    } | null;
+// }
 
-    avatar: {
-        file_id: number;
-    } | null;
-
-    chatId: number;
+export class Message implements MessageSchema {
+    message: ChatMessage;
+    chatHash: string;
     readed: boolean;
 
-    constructor(msg: IMessage) {
-        this.id = msg.id;
-        this.stamp = msg.stamp;
-        this.from = msg.from;
-        this.text = msg.text ?? "";
-        this.image = msg.image ?? null;
-        this.file = msg.file ?? null;
-        this.voice = msg.voice ?? null;
-        this.avatar = msg.avatar ?? null;
+    constructor(msg: ChatMessage, chat: string, readed = true) {
+        this.message = msg;
 
-        this.chatId = msg.chatId;
-        this.readed = msg.readed;
+        this.chatHash = chat;
+        this.readed = readed;
     }
 
-    sync() {
-        history.insertOne(this);
+    async sync() {
+        if (await history.findOne({ chatHash: this.chatHash, message: { id: this.message.id } })) {
+            return history.updateOne({ chatHash: this.chatHash, message: { id: this.message.id } }, this);
+        } else {
+            return await history.insertOne(this);
+        }
     }
 
-    remove() {
-        history.deleteOne({ id: this.id });
+    async remove() {
+        // TODO its work? or use func
+        return await history.deleteOne({ chatHash: this.chatHash, message: { id: this.message.id } });
     }
 
     static async findOne(query: Partial<MessageSchema>): Promise<Message | null> {
         const object = await history.findOne(query);
-        if (object) return new Message(object);
+        if (object) return new Message(object.message, object.chatHash, object.readed);
         return null;
     }
 
@@ -178,43 +121,48 @@ export class Message {
         const objects = await history.findMany(query);
 
         return objects.map((obj) => {
-            return new Message(obj);
+            return new Message(obj.message, obj.chatHash, obj.readed);
         });
     }
 }
 
-export interface IChat {
-    // id?: number,
-    hash: string,
+export type IChat = {
+    hash?: string,
     initiator: string,
     managerId?: number | null,
 }
 
-export class Chat {
+export class Chat implements IChat {
     // id: number;
-    hash: string;
+    readonly hash: string;
     initiator: string;
     managerId: number | null;
 
     constructor(chat: IChat) {
-        // this.id = chat.id ?? chats.count();
-        this.hash = chat.hash;
+        this.hash = chat.hash ?? randomUUID();
         this.initiator = chat.initiator;
         this.managerId = chat.managerId ?? null;
     }
 
-    sync() {
-        chats.insertOne(this);
-        return this;
+    async sync() {
+        if (await chats.findOne({ hash: this.hash })) {
+            return await chats.updateOne({ hash: this.hash }, this);
+        } else {
+            return await chats.insertOne(this);
+        }
     }
 
-    remove() {
-        chats.deleteOne({ hash: this.hash });
-        return this;
+    async remove() {
+        return await chats.deleteOne({ hash: this.hash });
     }
 
-    // pushMessage(message: IMessage) {
-    // }
+    async appendHistory(message: ChatMessage, readed: boolean = true) {
+        return (new Message(message, this.hash, readed)).sync();
+    }
+
+    async getHistory() {
+        return await history.findMany({ chatHash: this.hash });
+    }
 
     static async findOne(query: Partial<ChatSchema>): Promise<Chat | null> {
         const object = await chats.findOne(query);
@@ -231,28 +179,27 @@ export class Chat {
     }
 }
 
-export interface IManager {
+export class Manager implements IManager {
     userId: number; // telegram user id
-    isAdmin: boolean;
-    linkedChat: string | null;
-    online: boolean;
-}
-
-export class Manager {
-    userId: number; // telegram user id
+    name: string;
     isAdmin: boolean;
     linkedChat: string | null;
     online: boolean;
 
     constructor(mngr: IManager) {
         this.userId = mngr.userId;
+        this.name = mngr.name;
         this.isAdmin = mngr.isAdmin;
-        this.linkedChat = mngr.linkedChat;
-        this.online = mngr.online;
+        this.linkedChat = mngr.linkedChat ?? null;
+        this.online = mngr.online ?? false;
     }
 
-    sync() {
-        return managers.insertOne(this);
+    async sync() {
+        if (await managers.findOne({ userId: this.userId })) {
+            return managers.updateOne({ userId: this.userId }, this);
+        } else {
+            return managers.insertOne(this);
+        }
     }
 
     remove() {
@@ -284,8 +231,3 @@ export class Manager {
         });
     }
 }
-
-// TODO purpose - delete emty chats and split or delete old messages
-// class Cleaner {
-
-// }

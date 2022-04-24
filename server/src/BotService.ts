@@ -1,61 +1,69 @@
-import * as tg from 'telegraf';
-import { EventEmitter } from 'events';
-import { Database, Manager } from './database.js';
-import { ChatServer } from './ChatService.js';
-import { Config } from './Config.js';
+import * as tg from 'telegraf'
+import { EventEmitter } from 'events'
+import { Database, Manager, Chat } from './database.js'
+import { ChatServer } from './ChatService.js'
+import { Config } from './Config.js'
+import { ChatMessage } from './Schemas/ChatMessage.js'
 
 interface Context extends tg.Context {
-    admin: boolean,
+    manager: Manager
 }
 
 export class BotService extends EventEmitter {
-    private bot: tg.Telegraf<Context>;
-    private chatService: ChatServer;
+    private readonly bot: tg.Telegraf<Context>;
+    private readonly chatService: ChatServer;
 
     constructor() {
         super();
         this.chatService = new ChatServer();
 
-        // if (!config.bot.token.match(/^[0-9]{8,10}:[a-zA-Z0-9_-]{35}$/)) {
-        //     console.error("Invalid bot api token: ", config.bot.token);
-        //     process.exit(-1);
-        // }
-
         this.bot = new tg.Telegraf(Config().bot.token);
 
-        this.chatService.on("message", (managerId: number, message: ChatMessage) => {
-            if (managerId) {
-                this.bot.telegram.sendMessage(managerId, "Customer \"" + message.from.name + "\" sends:\n" + message.text);
+        this.chatService.onChatManagerRequest = async (chat: Chat) => {
+            if (chat.managerId) {
+                await this.bot.telegram.sendMessage(chat.managerId, "Customer " + chat.initiator + " return to chat");
+            } else {
+                let online = await Database.managers.findMany({ online: true });
+                for await (let m of online) {
+                    this.bot.telegram.sendMessage(m.userId, "Incoming chat invetation from " + chat.initiator, this.createEnterChatMarkup(chat.hash));
+                }
             }
-        });
+        }
 
-        let acceptChatMarkup = (hash: string) => tg.Markup.inlineKeyboard([ tg.Markup.button.callback("Accept", "accept " + hash), tg.Markup.button.callback("Decline", "decline " + hash) ])
-
-        this.chatService.on("newChat", async (hash: string, initiator: string) => {
-            let online = await Database.managers.findMany({ online: true });
-            for await (let m of online) {
-                this.bot.telegram.sendMessage(m.userId, "Incoming chat invetation from " + initiator, acceptChatMarkup(hash));
+        this.chatService.onChatClosed = async (chat: Chat, waitReq: boolean) => {
+            if (waitReq) {
+                this.bot.telegram.sendMessage(Number(chat.managerId), "Client reloading page or something, you still can leave or close this chat");
+            } else {
+                chat.managerId = null;
+                await chat.sync();
+                this.bot.telegram.sendMessage(Number(chat.managerId), "Client closed chat");
             }
-        });
+        }
 
-        this.chatService.on("restoredChat", (hash: string) => {
-            console.log("Unhandled", hash);
-        });
-
-        this.chatService.on("endChat", (managerId: number) => {
-            if (managerId) {
-                Database.managers.updateOne({ userId: managerId }, { linkedChat: null });
-                this.bot.telegram.sendMessage(managerId, "Client leave chat");
+        this.chatService.onChatMessage = async (chat: Chat, message: ChatMessage) => {
+            if (chat.managerId) { // mean connected?
+                this.bot.telegram.sendMessage(chat.managerId, message.from.name + ":\n" + message.text);
+                if (message.attachments.length) {
+                    message.attachments.forEach(async (a) => {
+                        switch (a.file_mime) {
+                            // case "jpeg":
+                                // this.bot.telegram.sendPhoto(Number(chat.managerId), a.);
+                                // break;
+                            // case "df":
+                            //     break;
+                            default:
+                                console.error("DEBUG: unknown message attachment mime passed: ", a.file_mime);
+                        }
+                    })
+                }
             }
-        });
+        }
 
         // identification midleware
         this.bot.use(async (ctx, next) => {
-            // @ts-ignore
-            let mngr = await this.managers.get(ctx.from.id);
+            let mngr = await Manager.findOne({ userId: ctx.from!.id })
             if (mngr) {
-                if (mngr.admin) ctx.admin = true;
-                else ctx.admin = false;
+                ctx.manager = mngr;
                 return next();
             } else if (ctx.updateType == 'callback_query') {
                 return next();
@@ -104,7 +112,7 @@ export class BotService extends EventEmitter {
             if (pending.length > 0) {
                 ctx.reply("During your absence " + pending.length + " peoplec need your help");
                 for (let chat of pending) {
-                    ctx.reply("Incoming invetation from " + chat.initiator, acceptChatMarkup(chat.hash));
+                    ctx.reply("Incoming invetation from " + chat.initiator, this.createEnterChatMarkup(chat.hash));
                 }
             }
         });
@@ -118,27 +126,29 @@ export class BotService extends EventEmitter {
         });
 
         this.bot.command('chats', ctx => {
-            if (ctx.admin) {
+            if (ctx.manager.isAdmin) {
 
             } else {
 
             }
         });
 
-        this.bot.command('accept', ctx => {
-            let chatHash = ctx.message.text.slice('accept'.length+1);
-            if (this.chatService.acceptChat(chatHash, ctx.from!.id, ctx.from!.first_name + " " + ctx.from!.last_name)) {
-                Database.managers.updateOne({ userId: ctx.from!.id }, { linkedChat: chatHash })
+        this.bot.command('enter', async ctx => {
+            let chatHash = ctx.message.text.slice('enter'.length+1);
+            // avoiding ts warning
+            if (this.chatService.enterChat(chatHash, ctx.manager)) {
+                ctx.manager.linkToChat(chatHash)
                 ctx.reply("Now you are in chat with customer");
             } else {
                 ctx.reply("Selected chat expired");
             }
         })
 
-        this.bot.action(/accept*/, (ctx, next)=> {
-            let chatHash = ctx.match.input.slice('accept'.length+1);
-            if (this.chatService.acceptChat(chatHash, ctx.from!.id, ctx.from!.first_name + " " + ctx.from!.last_name)) {
-                Database.managers.updateOne({ userId: ctx.from!.id }, { linkedChat: chatHash })
+        this.bot.action(/enter*/, async (ctx, next)=> {
+            let chatHash = ctx.match.input.slice('enter'.length+1);
+            // avoiding ts warning
+            if (this.chatService.enterChat(chatHash, ctx.manager)) {
+                ctx.manager.linkToChat(chatHash);
                 ctx.reply("Now you are in chat with customer").then(() => next());
             } else {
                 ctx.reply("Selected chat expired").then(() => next());
@@ -146,53 +156,48 @@ export class BotService extends EventEmitter {
         });
 
         this.bot.command('close', async ctx => {
-            let m = await Manager.findOne({ userId: ctx.from!.id });
-            if (m!.linkedChat) {
-                this.chatService.closeChat(m!.linkedChat);
-                m!.unlinkChat();
+            if (ctx.manager.linkedChat) {
+                this.chatService.closeChat(ctx.manager.linkedChat);
+                ctx.manager.unlinkChat();
                 ctx.reply("Chat successfuly closed");
             } else {
-                ctx.reply("Close chat command will be avalible only after accepting any chat");
+                ctx.reply("Close chat command will be avalible only after entering any chat");
             }
         });
 
         this.bot.command('leave', async ctx => {
-            let m = await Manager.findOne({ userId: ctx.from!.id });
-            if (m!.linkedChat) {
-                this.chatService.leaveChat(m!.linkedChat);
-                m!.unlinkChat();
-                ctx.reply("Chat successfuly leaved, " + (await Database.chats.findOne({ managerId: ctx.from.id }))!.initiator + " will wait for another manager");
+            if (ctx.manager.linkedChat) {
+                this.chatService.leaveChat(ctx.manager.linkedChat);
+                ctx.manager.unlinkChat();
+                ctx.reply("Chat successfuly leaved, " + (await Chat.findOne({ managerId: ctx.manager.userId }))!.initiator + " will wait for another manager");
             } else {
-                ctx.reply("Leave chat command will be avalible only after accepting any chat");
+                ctx.reply("Leave chat command will be avalible only after entering any chat");
             }
         });
 
         this.bot.on('text', async ctx => {
-            // @ts-ignore
-            let chatHash = (await Database.managers.findOne({ userId: ctx.from.id })).linkedChat;
-            if (chatHash) {
-                this.chatService.answerTo(chatHash, {
+            if (ctx.manager.linkedChat) {
+                this.chatService.answerTo(ctx.manager.linkedChat, {
                     id: -1,
                     stamp: ctx.message.date,
                     from: {
-                        name: ctx.from.first_name + " " + ctx.from.last_name,
+                        name: ctx.manager.name,
                         type: 'manager'
                     },
                     text: ctx.message.text,
+                    attachments: []
                 });
             } else {
-                let msg = ctx.reply("You are not connected to chat, those messages will be deleted");
+                let msg = await ctx.reply("You are not connected to chat, those messages will be deleted");
                 setTimeout(async () => {
                     ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-                    ctx.telegram.deleteMessage(ctx.chat.id, (await msg).message_id);
+                    ctx.telegram.deleteMessage(ctx.chat.id, msg.message_id);
                 }, 5000);
             }
         });
-
     }
 
     deconstructor() {
-        this.bot.stop();
     }
 
     async start() {
@@ -201,6 +206,7 @@ export class BotService extends EventEmitter {
                 if (!e) {
                     Database.managers.insertOne({
                         isAdmin: true,
+                        name: "Admin",
                         userId: Config().bot.admin_id,
                         linkedChat: null,
                         online: false
@@ -209,7 +215,10 @@ export class BotService extends EventEmitter {
             })
             .then(() => {
                 this.bot.launch()
-                    .then(() => {
+                    .then(async () => {
+                        for (let mngr of await Manager.findMany({  })) {
+                            this.bot.telegram.sendMessage(mngr.userId, "Service now online");
+                        }
                         console.log("Telegram-bot service started");
                     })
                     .catch(err => { throw err; });
@@ -217,17 +226,25 @@ export class BotService extends EventEmitter {
     }
 
     async stop() {
-        let mngrs = await Database.managers.findMany();
-        for await (let m of mngrs) {
+        let mngrs = Database.managers.documents;
+        for (let m of mngrs) {
             await this.bot.telegram.sendMessage(m.userId, "Service going offline, your status will be reseted to offline");
         }
+        await this.chatService.stop();
         this.bot.stop();
         await Database.managers.updateMany({ online: true }, { online: false, linkedChat: null });
         await Database.managers.save();
     }
 
-    setupChatToBotChannel() {
-
+    private createEnterChatMarkup(hash: string) {
+        return tg.Markup.inlineKeyboard([ tg.Markup.button.callback("Accept", "chat_enter" + hash),
+                                          tg.Markup.button.callback("Decline", "chat_decline " + hash) ])
     }
+
+    // private createMainKeyboard() {
+    //     return tg.Markup.keyboard([
+    //         tg.Markup.button.callback("Status", "menu_status")
+    //     ]);
+    // }
 }
 

@@ -1,32 +1,36 @@
 import * as fs from 'fs';
+import { dirname } from 'path';
 import { BotService } from './BotService.js';
 
-function die(msg?: string) {
-    console.error("Daing");
-    fs.unlinkSync(".lock.pid");
-    if (msg) {
-        console.error(msg);
-        process.exit(-1);
+const lockFilePath = "./.lock.pid";
+
+(async () => {
+    try {
+        if (fs.existsSync(lockFilePath)) {
+            throw "Server already running. Process PID: " +
+                          fs.readFileSync(lockFilePath).toString();
+        }
+        try {
+            fs.accessSync(dirname(lockFilePath), fs.constants.W_OK)
+        } catch (e) {
+            throw "Directory" + dirname(lockFilePath) + "not writable for user" + process.env.USER || "Unknown username"
+        }
+        fs.writeFileSync(lockFilePath, process.pid.toString(), { flag: "wx+" });
+    } catch (e) {
+        console.error(e);
     }
-}
 
-try {
-    // if (fs.existsSync(".lock.pid"))
-    // {
-    //     console.error("Server already running. Process PID: ",
-    //                   fs.readFileSync(".lock.pid").toString());
-    // }
-    // else
-    // {
-    //     process.on('exit', () => die);
+    try {
+        let server = new BotService();
 
-    fs.writeFileSync(".lock.pid", process.pid.toString());
-} catch (e) {
-    die("Error occured while service startup: " + e);
-}
+        process.on("SIGINT", async () => await server.stop());
+        process.on("SIGTERM", async () => await server.stop());
 
-try {
-    let serv = new BotService();
-} catch (e) {
-    die("Error occured while service running: " + e);
-}
+        await server.start();
+    } catch (e) {
+        console.error("Error occured while service running: " + e);
+    } finally {
+        fs.unlinkSync(lockFilePath);
+        console.log("Stopped");
+    }
+})()

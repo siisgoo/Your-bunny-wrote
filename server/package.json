@@ -19,14 +19,14 @@
     },
     "name": "rediirector-server",
     "version": "0.0.1",
-    "main": "bin/main.js",
+    "main": "dist/main.js",
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1",
         "build": "tsc --build --pretty",
-        "postbuild": "cp -Ru node_modules bin/node_modules",
-        "debug": "node --inspect bin/main.js",
-        "go": "node bin/main.js",
-        "re": "npm run build && npm run go"
+        "postbuild": "cp -Ru node_modules dist/node_modules",
+        "debug": "node --inspect dist/main.js",
+        "start": "node dist/main.js",
+        "re": "npm run build && npm run start"
     },
     "type": "module",
     "author": "siisgoo",

@@ -121,7 +121,7 @@ html.-is-locked {
     display: block;
     opacity: 0; /* display by js */
     background: #efefef;
-    position:fixed;
+    position: fixed;
     left: 10px;
     bottom: 100px;
     width: 350px;

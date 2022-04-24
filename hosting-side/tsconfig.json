@@ -1,14 +1,24 @@
 {
     "compilerOptions": {
         "preserveConstEnums": true,
-        "outFile": "./chat.js",
+        "outDir": "./public/js",
         "allowJs": true,
-        "target": "es6",
-        "typeRoots": ["node_modules/@types"]
+        "target": "es2019",
+        "module": "esnext",
+        "moduleResolution": "node",
+        "typeRoots": ["node_modules/@types"],
+        "rootDir": "./src",
+        "lib": ["esnext", "dom"],
+        "experimentalDecorators": true /* Enables experimental support for ES7 decorators. */,
+        "noUnusedLocals": true /* Report errors on unused locals. */,
+        "strict": true /* Enable all strict type-checking options. */,
+        "noUnusedParameters": true /* Report errors on unused parameters. */,
+        "noImplicitReturns": true /* Report error when not all code paths in function return a value. */,
+        "noFallthroughCasesInSwitch": true /* Report errors for fallthrough cases in switch statement. */,
+        "emitDecoratorMetadata": true /* Enables experimental support for emitting type metadata for decorators. */,
+        "paths": {
+            "Schemas/*": [ "./../server/dist/Schemas/*" ]
+        }
     },
-    "removeComments": true,
-    "files": [
-        "./chat.ts",
-        "./../shared-types.d.ts"
-    ]
+    "removeComments": true
 }
