@@ -15,6 +15,14 @@ export class ChatHeader {
             chat.toNormal();
         });
     }
+
+    // public setTitle(text: string) {
+    //     this.el.children("")
+    // }
+
+    public setSubTitle(text: string) {
+        $("#chat-manager-name").text(text);
+    }
 }
 
 export class Chat {
@@ -27,6 +35,9 @@ export class Chat {
 
     public readonly box: JQuery<HTMLElement> = $("#chat-box");
     public readonly body: JQuery<HTMLElement> = $("#chat-box-body");
+    public readonly inputField: JQuery<HTMLElement> = $("#chat-input");
+
+    private readonly notifySound = new Audio("/rediirector/sounds/chat-notify.mp3");
 
     constructor() {
         this.initialPosition = $("#chat-box").position();
@@ -42,7 +53,9 @@ export class Chat {
     }
 
     public init() {
-        this.box.css("opacity", 1);
+        // show chat
+        this.box.animate({opacity: 1}, 1000);
+
     }
 
     public hide() {
@@ -77,11 +90,31 @@ export class Chat {
         }
     }
 
+    public setInput(str: string, append: boolean = true) {
+        let oldInput: string = this.inputField.val()!.toString();
+        if (!append) {
+            oldInput = '';
+        } else if (oldInput !== '') {
+            oldInput += ' ';
+        }
+        this.inputField.val(oldInput + str);
+        this.inputField.on('blur', function() {
+            $(this).off('blur');
+            setTimeout(() => {
+                this.focus();
+            }, 10);
+        }).blur();
+    }
+
+    public playNotify(/*type?: NotifyType*/) {
+        this.notifySound.play();
+    }
+
     public setBackground(src: string) {
         this.body.css("background-image", src);
     }
 
-    resizeChat(size: { width: number, height: number }, dur: number = 0, then?: () => void) {
+    public resizeChat(size: { width: number, height: number }, dur: number = 0, then?: () => void) {
         $("#chat-logs").animate({
             height: size.height -
                     $("#chat-box-header")[0].offsetHeight -
@@ -93,7 +126,7 @@ export class Chat {
         }, dur, then);
     }
 
-    maximizeVerticaly(then?: () => void) {
+    public maximizeVerticaly(then?: () => void) {
         if (!this.resizeLock) {
             this.resizeLock = true;
             $("#chat-vertical-maximize").css("display", "none");
@@ -120,7 +153,7 @@ export class Chat {
         }
     }
 
-    toNormal() {
+    public toNormal() {
         if (!this.resizeLock) {
             this.resizeLock = true;
             $("#chat-vertical-maximize").css("display", "block");
@@ -164,10 +197,10 @@ export class Chat {
 
     public appendMessage(message: ChatMessage) {
         let type: string = "";
-        let avatar_url: string = String();
+        let avatar_url: string = String(); // TODO read from model
         switch (message.from.type) {
             case "bot":
-                avatar_url = "/rediirector/images/avatars/bot-icon.png"
+                avatar_url = "/rediirector/images/avatars/user-icon.png";
                 type = "user";
             break;
             case "manager":
@@ -234,17 +267,43 @@ export class Chat {
 export class ChatToggle {
     public stillHovered = false;
     public opened = false;
-    public readonly el: JQuery<HTMLElement> = $("#chat-toggle")
+    public readonly el: JQuery<HTMLElement> = $("#chat-toggle");
     public readonly toggleTirggerEl: JQuery<HTMLElement> = this.el.children("#chat-toggle-text")
 
+    public onTriggered: () => void = () => {}
+
     constructor() {
+        this.toggleTirggerEl.on("click", this.onTriggered);
+    }
+
+    init() {
+        this.el.hover(
+            () => this.show(),
+            () => this.hide()
+        );
+
+        // @ts-ignore
+        this.el.css("left", -this.el.width());
+        this.adjust(1000);
     }
 
     show() {
-        this.el.stop().animate({ left: 0 }, 1500, "easeInOutQuint"); // TODO adjust duration by showed width
+        let f = () => this.el.stop().animate({ left: 0 }, 1500, "easeInOutQuint"); // TODO adjust duration by showed width
+        this.stillHovered = true;
+        if (this.opened) {
+            f();
+        } else {
+            setTimeout(() => {
+                if (this.stillHovered) {
+                    this.opened = true
+                    f();
+                }
+            }, 1050)
+        }
     }
 
     hide() {
+        this.stillHovered = false;
         this.el.stop().animate({ left: this.normalLeft }, 2000, "easeOutCubic", () => { this.opened = false; });
     }
 

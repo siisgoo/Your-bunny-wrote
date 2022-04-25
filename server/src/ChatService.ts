@@ -39,7 +39,7 @@ class ChatConnection extends Chat {
                         event: "onlineCount",
                         payload: { count: (await Database.managers.findMany({ online: true })).length }
                     }
-                    this.socket.send(JSON.stringify(res));
+                    this.socket.send(res);
                     break;
                 }
                 default:
@@ -71,7 +71,7 @@ class ChatConnection extends Chat {
         let msg = {
             event: "accept",
             payload: { manager: manager } }; // TODO
-        this.socket.send(JSON.stringify(msg))
+        this.socket.send(msg)
     }
 
     async answer(message: ChatMessage) {
@@ -81,7 +81,7 @@ class ChatConnection extends Chat {
                 payload: { message: message } }
             // TODO message.readed not used
             await this.appendHistory(message, true);
-            this.socket.send(JSON.stringify(msg))
+            this.socket.send(msg)
             return true;
         } else {
             return false
@@ -165,7 +165,7 @@ export class ChatServer {
                     };
                 }
 
-                socket.send(JSON.stringify(response));
+                socket.send(response);
 
                 let connection = new ChatConnection(socket, chat);
                 this.connections.set(chat.hash, connection);

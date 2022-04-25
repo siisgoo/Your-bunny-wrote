@@ -1,45 +1,30 @@
+import { Model } from './Model'
 
-        $("#chat-save-session").on("click", () => {
-            if (cookie.get("saveChatSession") == "true") {
-                cookie.set("saveChatSession", "false", {});
-                $("#chat-save-session").removeClass("chat-settings-active");
-                $("#chat-save-session").addClass("chat-settings-diactive");
-                // botMessages.historyTurnDelete();
-            } else {
-                cookie.set("saveChatSession", "true", {});
-                $("#chat-save-session").removeClass("chat-settings-diactive");
-                $("#chat-save-session").addClass("chat-settings-active");
-                // botMessages.historyTurnSave();
-            }
-        });
+export class Controller {
+    constructor(private model: Model) {
+    }
 
-        $("#chat-reset").on("click", () => this.emit("reset"));
-        $("#chat-toggle").hover(
-            () => {
-                this.stillHovered = true;
-                if (this.opened) {
-                    this.show();
-                } else {
-                    setTimeout(() => {
-                        if (this.stillHovered) {
-                            this.opened = true
-                            this.show();
-                        }
-                    }, 1050)
-                }
-            },
-            () => {
-                this.stillHovered = false;
-                this.hide();
-            }
-        );
-
-        $("#chat-toggle-text").on("click", ev => this.emit("toggle"));
-
-        // hide
-        $("#chat-toggle").css("left", -$("#chat-toggle").width());
-        // show
-        this.adjust(1000);
-
-        // show chat
-        $("#chat-box").animate({opacity: 1}, 1000);
+    receive(cmd: string, args?: any){
+        var args = args || {};
+        switch(cmd){
+            case 'newMessage':
+                this.model.sendMessage(args);
+                break;
+            case 'init':
+                this.model.init();
+                break;
+            case 'resetChat':
+                this.model.resetChat();
+                break;
+            // case 'lastMessageInput':
+            //     Model.sendLastMessage();
+            // break;
+            // case 'autoComplete':
+            //     Model.autoComplete(args);
+            // break;
+            default:
+                'No action specified for ' + cmd + 'command';
+                break;
+        }
+    }
+}
