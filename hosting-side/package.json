@@ -16,6 +16,7 @@
         "idb": "^7.0.1",
         "jquery": "^3.6.0",
         "requirejs": "^2.3.6",
+        "spinthatshit": "^1.0.4",
         "sse": "^0.0.8",
         "typescript": "^4.6.3"
     }

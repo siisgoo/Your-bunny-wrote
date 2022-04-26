@@ -365,3 +365,35 @@ html.-is-locked {
     width:35px;
     height:35px;
 }
+
+.loader {
+    width: 56px;
+    height: 56px;
+    border: 2px solid rgba(0, 82, 236, 0.5);
+    border-radius: 50%;
+    position: relative;
+    animation: loader-rotate 1s ease-in-out infinite;
+    top: 50%;
+    margin: -28px auto 0; 
+}
+
+.loader::after {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #17a;
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    margin-left: -5px; 
+}
+
+@keyframes loader-rotate {
+    0% {
+        transform: rotate(0); 
+    }
+    100% {
+        transform: rotate(360deg); 
+    } 
+}

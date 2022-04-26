@@ -26,11 +26,14 @@ const lockFilePath = "./.lock.pid";
         process.on("SIGINT", async () => await server.stop());
         process.on("SIGTERM", async () => await server.stop());
 
-        await server.start();
+        server.onStop = () => {
+            fs.unlinkSync(lockFilePath);
+            console.log("Halted");
+        }
+
+        server.start();
     } catch (e) {
         console.error("Error occured while service running: " + e);
     } finally {
-        fs.unlinkSync(lockFilePath);
-        console.log("Stopped");
     }
 })()

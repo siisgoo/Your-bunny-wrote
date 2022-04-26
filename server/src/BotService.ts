@@ -13,6 +13,10 @@ export class BotService extends EventEmitter {
     private readonly bot: tg.Telegraf<Context>;
     private readonly chatService: ChatServer;
 
+    private running: boolean = false;
+
+    public onStop: () => void = () => {}
+
     constructor() {
         super();
         this.chatService = new ChatServer();
@@ -133,8 +137,8 @@ export class BotService extends EventEmitter {
             }
         });
 
-        this.bot.command('enter', async ctx => {
-            let chatHash = ctx.message.text.slice('enter'.length+1);
+        this.bot.command('chat_enter', async ctx => {
+            let chatHash = ctx.message.text.slice('chat_enter'.length);
             // avoiding ts warning
             if (this.chatService.enterChat(chatHash, ctx.manager)) {
                 ctx.manager.linkToChat(chatHash)
@@ -144,8 +148,8 @@ export class BotService extends EventEmitter {
             }
         })
 
-        this.bot.action(/enter*/, async (ctx, next)=> {
-            let chatHash = ctx.match.input.slice('enter'.length+1);
+        this.bot.action(/chat_enter*/, async (ctx, next)=> {
+            let chatHash = ctx.match.input.slice('chat_enter'.length);
             // avoiding ts warning
             if (this.chatService.enterChat(chatHash, ctx.manager)) {
                 ctx.manager.linkToChat(chatHash);
@@ -185,7 +189,7 @@ export class BotService extends EventEmitter {
                         type: 'manager'
                     },
                     text: ctx.message.text,
-                    // attachments: []
+                    buttons: []
                 });
             } else {
                 let msg = await ctx.reply("You are not connected to chat, those messages will be deleted");
@@ -216,24 +220,30 @@ export class BotService extends EventEmitter {
             .then(() => {
                 this.bot.launch()
                     .then(async () => {
+                        this.running = true;
                         for (let mngr of await Manager.findMany({  })) {
                             this.bot.telegram.sendMessage(mngr.userId, "Service now online");
                         }
                         console.log("Telegram-bot service started");
                     })
                     .catch(err => { throw err; });
+                this.chatService.start();
             })
     }
 
     async stop() {
+        if (!this.running) return;
+        this.running = false;
+
         let mngrs = Database.managers.documents;
         for (let m of mngrs) {
             await this.bot.telegram.sendMessage(m.userId, "Service going offline, your status will be reseted to offline");
         }
-        await this.chatService.stop();
         this.bot.stop();
         await Database.managers.updateMany({ online: true }, { online: false, linkedChat: null });
         await Database.managers.save();
+        await this.chatService.stop();
+        this.onStop();
     }
 
     private createEnterChatMarkup(hash: string) {

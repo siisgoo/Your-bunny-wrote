@@ -1,13 +1,13 @@
 import * as fs from 'fs'
 import { Database as ADatabase } from 'aloedb-node'
-import { assert, nullable, object, boolean, number, string, Infer } from 'superstruct'
+import { optional, assert, nullable, object, boolean, number, string, Infer } from 'superstruct'
 import { randomUUID } from 'crypto'
-import { Config } from './Config'
+import { Config } from './Config.js'
 // import cache from 'node-cache';
 
-import { FileSign } from './Schemas/File'
-import { ManagerSign, ManagerSchema, IManager } from './Schemas/Manager'
-import { ChatMessage, ChatMessageSign } from './Schemas/ChatMessage'
+import { FileSchema, FileSign } from './Schemas/File.js'
+import { ManagerSign, ManagerSchema, IManager } from './Schemas/Manager.js'
+import { ChatMessage, ChatMessageSign } from './Schemas/ChatMessage.js'
 
 // TODO add some caching abilities
 
@@ -23,8 +23,9 @@ const MessageSign = object({
 
 const ChatSign = object({
     hash: string(),
-    initiator: string(),
+    initiator: optional(string()),
     managerId: nullable(number()),
+    waitingManager: boolean(),
 })
 
 export type ChatSchema = Infer<typeof ChatSign>;
@@ -54,7 +55,7 @@ const chats = new ADatabase<ChatSchema>({
 });
 
 const history = new ADatabase<MessageSchema>({
-    path: Config().server.database.path + "/chats.json",
+    path: Config().server.database.path + "/history.json",
     pretty: true,
     autoload: true,
     immutable: true,
@@ -62,7 +63,7 @@ const history = new ADatabase<MessageSchema>({
     schemaValidator: MessageEntryValidator,
 });
 
-const files = new ADatabase<MessageSchema>({
+const files = new ADatabase<FileSchema>({
     path: Config().server.database.path + "/files.json",
     pretty: true,
     autoload: true,
@@ -100,7 +101,7 @@ export class Message implements MessageSchema {
 
     async sync() {
         if (await history.findOne({ chatHash: this.chatHash, message: { id: this.message.id } })) {
-            return history.updateOne({ chatHash: this.chatHash, message: { id: this.message.id } }, this);
+            return await history.updateOne({ chatHash: this.chatHash, message: { id: this.message.id } }, this);
         } else {
             return await history.insertOne(this);
         }
@@ -128,8 +129,9 @@ export class Message implements MessageSchema {
 
 export type IChat = {
     hash?: string,
-    initiator: string,
+    initiator?: string,
     managerId?: number | null,
+    waitingManager?: boolean,
 }
 
 export class Chat implements IChat {
@@ -137,11 +139,13 @@ export class Chat implements IChat {
     readonly hash: string;
     initiator: string;
     managerId: number | null;
+    waitingManager: boolean;
 
     constructor(chat: IChat) {
         this.hash = chat.hash ?? randomUUID();
-        this.initiator = chat.initiator;
+        this.initiator = chat.initiator ?? "Client";
         this.managerId = chat.managerId ?? null;
+        this.waitingManager = chat.waitingManager ?? false;
     }
 
     async sync() {
@@ -156,8 +160,18 @@ export class Chat implements IChat {
         return await chats.deleteOne({ hash: this.hash });
     }
 
+    async lastMessageId(): Promise<number> {
+        return await history.findMany({ chatHash: this.hash }).then(msgs =>
+            ( msgs.length ? msgs[msgs.length - 1].message.id : 0 ))
+    }
+
     async appendHistory(message: ChatMessage, readed: boolean = true) {
-        return (new Message(message, this.hash, readed)).sync();
+        // return await (new Message(message, this.hash, readed)).sync();
+        return await history.insertOne({
+            message: message,
+            chatHash: this.hash,
+            readed: readed
+        })
     }
 
     async getHistory() {

@@ -1,4 +1,4 @@
-import { Model } from './Model'
+import { Model } from './Model.js'
 
 export class Controller {
     constructor(private model: Model) {

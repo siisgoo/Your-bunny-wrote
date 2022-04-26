@@ -12,6 +12,10 @@
     </div>
 </button>
 
+<div id="chat-service-url" style="display: none">
+<?php echo file_get_contents($_SERVER["DOCUMENT_ROOT"] . "/rediirector/service-url") ?>
+</div>
+
 <div id="chat-box"  class="drag-notactive">
     <div id="chat-box-header" class="noselect">
         Rediirector

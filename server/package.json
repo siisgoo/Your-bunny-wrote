@@ -1,11 +1,13 @@
 {
     "dependencies": {
+        "@types/localtunnel": "^2.0.1",
         "@types/node": "^17.0.24",
         "@types/node-cache": "^4.2.5",
         "@types/ws": "^8.5.3",
         "aloedb-node": "^1.0.2",
         "body-parser": "^1.20.0",
         "es6": "^0.0.7",
+        "localtunnel": "^2.0.2",
         "mongodb": "^4.5.0",
         "node-cache": "^5.1.2",
         "nosql": "^6.1.0",

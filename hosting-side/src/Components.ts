@@ -1,4 +1,4 @@
-import { ChatMessage } from "Schemas/ChatMessage"
+import { ChatMessage } from "Schemas/ChatMessage.js"
 
 export class ChatHeader {
     public readonly el: JQuery<HTMLElement> = $("#chat-box-header");
@@ -26,7 +26,7 @@ export class ChatHeader {
 }
 
 export class Chat {
-    private lastMessageId: number = 0; // local message id, will not be synced with server
+    // private last_message_id: number = -1; // local message id, will not be synced with server
 
     private resizeLock: boolean = false;
     private hidden: boolean = false;
@@ -55,7 +55,18 @@ export class Chat {
     public init() {
         // show chat
         this.box.animate({opacity: 1}, 1000);
+    }
 
+    public setSpiner() {
+        if (!$("#chat-logs").find(".loader").length) {
+            $("#chat-logs .chat-msg").each(function() { $(this).hide() })
+            $("#chat-logs").append("<div class=\"loader\"></div>")
+        }
+    }
+
+    public unsetSpiner() {
+        $("#chat-logs").children(".loader").fadeOut(400, function() { this.remove() });
+        $("#chat-logs").children("chat-msg").each(function() { $(this).show() })
     }
 
     public hide() {
@@ -196,6 +207,10 @@ export class Chat {
     // }
 
     public appendMessage(message: ChatMessage) {
+        // if (message.id < 0) message.id = this.last_message_id+1;
+        // if (message.id <= this.last_message_id) return;
+        // this.last_message_id = message.id;
+
         let type: string = "";
         let avatar_url: string = String(); // TODO read from model
         switch (message.from.type) {
@@ -217,9 +232,6 @@ export class Chat {
         }
         let time = new Date(message.stamp).toLocaleTimeString();
 
-        this.lastMessageId++;
-        message.id = this.lastMessageId;
-
         let str =
                 "<div id='cm-msg-" + message.id + "' class=\"chat-msg " + type + "\">" +
                     "<span class=\"msg-avatar\">" +
@@ -238,7 +250,7 @@ export class Chat {
                         "<ul>" +
                             message.buttons.map((button: {name: string, value: string}) =>
                             "<li class=\"button\">" +
-                                "<span onclick=\"handleButtonClick(\'" + button.name + "\',\'" + button.value + "\', \'" + this.lastMessageId + "\')\" class=\"chat-button\"\">" +
+                                "<span onclick=\"handleButtonClick(\'" + button.name + "\',\'" + button.value + "\', \'" + message.id + "\')\" class=\"chat-button\"\">" +
                                     button.name +
                                 "<\/span>" +
                             "<\/li>"
@@ -252,12 +264,12 @@ export class Chat {
         $("#chat-logs").append()
 
         $('#chat-logs').append(str);
-        $("#cm-msg-"+this.lastMessageId).hide().fadeIn(300);
+        $("#cm-msg-"+message.id).hide().fadeIn(300);
         $("#chat-logs").stop().animate({ scrollTop: $("#chat-logs")[0].scrollHeight }, 1000);
     }
 
     public clear(): void {
-        this.lastMessageId = 0;
+        // this.last_message_id = 0;
         $(".chat-msg").each(function() {
             $(this).fadeOut(300, function() { this.remove() });
         });

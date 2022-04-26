@@ -1,0 +1,264 @@
+[
+	{
+		"message": {
+			"id": 1,
+			"stamp": 1650947036319,
+			"from": {
+				"name": "",
+				"type": "customer"
+			},
+			"text": "aerg"
+		},
+		"chatHash": "8845e9e0-69d6-4e5a-a6e5-b28e5cb554a3",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 2,
+			"stamp": 1650947037480,
+			"from": {
+				"name": "",
+				"type": "customer"
+			},
+			"text": "aerg"
+		},
+		"chatHash": "8845e9e0-69d6-4e5a-a6e5-b28e5cb554a3",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 0,
+			"stamp": 1650947670392,
+			"from": {
+				"name": "",
+				"type": "customer"
+			},
+			"text": "gaerg"
+		},
+		"chatHash": "8845e9e0-69d6-4e5a-a6e5-b28e5cb554a3",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 0,
+			"stamp": 1650947672638,
+			"from": {
+				"name": "",
+				"type": "customer"
+			},
+			"text": "aaa"
+		},
+		"chatHash": "8845e9e0-69d6-4e5a-a6e5-b28e5cb554a3",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 1,
+			"stamp": 1650948022699,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Пожалуйста, подождите, вам скоро ответят.",
+			"buttons": []
+		},
+		"chatHash": "8845e9e0-69d6-4e5a-a6e5-b28e5cb554a3",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 1,
+			"stamp": 1650948144343,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Я - Bot-Name",
+			"buttons": []
+		},
+		"chatHash": "9a820930-f5fb-4534-8583-fb1365bd973d",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 2,
+			"stamp": 1650949097659,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Тут я бессилен, вызываю оператора.",
+			"buttons": []
+		},
+		"chatHash": "9a820930-f5fb-4534-8583-fb1365bd973d",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 3,
+			"stamp": 1650949236789,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Пожалуйста, подождите, вам скоро ответят.",
+			"buttons": []
+		},
+		"chatHash": "9a820930-f5fb-4534-8583-fb1365bd973d",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 1,
+			"stamp": 1650949373786,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Я - Bot-Name",
+			"buttons": []
+		},
+		"chatHash": "8ec1e183-d53a-4ce1-8a64-186eb2d774eb",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 2,
+			"stamp": 1650949679766,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Тут я бессилен, вызываю оператора.",
+			"buttons": []
+		},
+		"chatHash": "8ec1e183-d53a-4ce1-8a64-186eb2d774eb",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 0,
+			"stamp": 1650949718291,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Я - Bot-Name",
+			"buttons": []
+		},
+		"chatHash": "92d53c05-9f66-4a36-843b-088af97df076",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 1,
+			"stamp": 1650949783314,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Тут я бессилен, вызываю оператора.",
+			"buttons": []
+		},
+		"chatHash": "92d53c05-9f66-4a36-843b-088af97df076",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 0,
+			"stamp": 1650949958563,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Пожалуйста, подождите, вам скоро ответят.",
+			"buttons": []
+		},
+		"chatHash": "92d53c05-9f66-4a36-843b-088af97df076",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 0,
+			"stamp": 1650949996408,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Я - Bot-Name",
+			"buttons": []
+		},
+		"chatHash": "629e7c50-8d31-43ce-9e7a-9987ec9ef0c0",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 1,
+			"stamp": 1650949998448,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Тут я бессилен, вызываю оператора.",
+			"buttons": []
+		},
+		"chatHash": "629e7c50-8d31-43ce-9e7a-9987ec9ef0c0",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 0,
+			"stamp": 1650950085090,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Я - Bot-Name",
+			"buttons": []
+		},
+		"chatHash": "d34f3911-082e-4d66-b115-97d8f4dfdda8",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 1,
+			"stamp": 1650950090596,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Тут я бессилен, вызываю оператора.",
+			"buttons": []
+		},
+		"chatHash": "d34f3911-082e-4d66-b115-97d8f4dfdda8",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 0,
+			"stamp": 1650950231596,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Я - Bot-Name",
+			"buttons": []
+		},
+		"chatHash": "86a7052e-9408-4c04-b968-f1a035f51a63",
+		"readed": true
+	},
+	{
+		"message": {
+			"id": 1,
+			"stamp": 1650950240628,
+			"from": {
+				"type": "bot",
+				"name": "Bot-Name"
+			},
+			"text": "Тут я бессилен, вызываю оператора.",
+			"buttons": []
+		},
+		"chatHash": "86a7052e-9408-4c04-b968-f1a035f51a63",
+		"readed": true
+	}
+]

@@ -1,8 +1,8 @@
-import { ManagerSchema } from 'Schemas/Manager'
-import { ChatMessage } from 'Schemas/ChatMessage'
+import { ManagerSchema } from 'Schemas/Manager.js'
+import { ChatMessage } from 'Schemas/ChatMessage.js'
 import { IDBPDatabase, openDB, DBSchema } from './../node_modules/idb/build/index.js'
-import { cookie } from './Cookie'
-import { View } from './View'
+import { cookie } from './Cookie.js'
+import { View } from './View.js'
 
 interface HistoryIDBSchema extends DBSchema {
     history: {
@@ -107,36 +107,11 @@ export class Model {
         // validate
 
         this.url = url;
+        console.log(url)
     }
 
     async init() {
-        this.socket = new WebSocket(this.url + "?hash="+this.hash)
-
-        this.subtitle = "Connecting...";
-        this.notify("newSubTitle");
-
-        this.socket.onopen = () => {
-            this.connectionState = connState.Connected;
-            this.subtitle = "Connected";
-            this.notify("newSubTitle");
-        }
-
-        this.socket.onclose = () => {
-            this.connectionState = connState.Disconnected;
-            this.subtitle = "";
-            this.notify("newSubTitle");
-            this.notify("serviceNotAvalible");
-        }
-
-        this.socket.onerror = () => {
-            this.connectionState = connState.NotAvalible;
-            this.notify("serviceNotAvalible");
-        }
-
-        this.socket.onmessage = (e: MessageEvent<{ event: string, payload: object }>) => {
-            this.messageHandler(e);
-        }
-
+        this.connect();
         if (this.curManager) {
             this.notify("newManager");
         }
@@ -157,6 +132,58 @@ export class Model {
             });
             this.notify("newMessage");
         });
+
+        this.notify('setSpiner');
+    }
+
+    connect() {
+        this.socket = new WebSocket(this.url)
+
+        this.subtitle = "Connecting...";
+        this.notify("newSubTitle");
+
+        this.socket.onopen = () => {
+            this.connectionState = connState.Connected;
+            this.subtitle = "Connected";
+            this.notify("newSubTitle");
+
+            let req = { hash: this.hash }
+            this.socket.send(JSON.stringify(req));
+        }
+
+        this.socket.onclose = (e) => {
+            this.connectionState = connState.Disconnected;
+            if (e.code !== 1006) {
+                this.subtitle = "Not avalible";
+                this.notify("newSubTitle");
+            }
+            this.notify('setSpiner');
+            //handle code
+            setTimeout(() => this.connect(), 5000);
+        }
+
+        this.socket.onerror = (e) => {
+            this.connectionState = connState.NotAvalible;
+            this.subtitle = "Not avalible";
+            this.notify("newSubTitle");
+            this.notify('setSpiner');
+            //handle code
+            console.log("ERR", e);
+            (async () => setTimeout(() => this.notify("disable"), 1000))();
+        }
+
+        this.socket.onmessage = (e: MessageEvent<{ event: string, payload: object }>) => {
+            this.messageHandler(e);
+        }
+
+    }
+
+    ok() {
+        return this.connectionState == connState.Connected;
+    }
+
+    settings() {
+        return this.user.settings;
     }
 
     userName() {
@@ -172,8 +199,7 @@ export class Model {
     }
 
     pendingMessages() {
-        let messages = this.unhandledMessages;
-        this.unhandledMessages.splice(0);
+        let messages = this.unhandledMessages.splice(0);
         this.unhandledMessages.length = 0;
         return messages;
     }
@@ -205,7 +231,12 @@ export class Model {
         }
 
         if (mustSend) {
-            this.socket.send(JSON.stringify(message));
+            this.socket.send(JSON.stringify({
+                target: "message",
+                payload: {
+                    message: message
+                }
+            }));
         }
     }
 
@@ -218,7 +249,7 @@ export class Model {
         params.length = 0;
         switch (action) {
             case "clear": {
-                // this.view.clearMessages();
+                this.view?.notify("clear");
                 return false;
             }
             default: {
@@ -232,11 +263,38 @@ export class Model {
         this.unhandledMessages.splice(0);
         this.unhandledMessages.length = 0;
         this.lastMessage = undefined;
+        this.notify("clear");
     }
 
-    messageHandler(e: MessageEvent<{ event: string, payload: object }>) {
-        switch (e.data.event) {
-
+    messageHandler(e: MessageEvent) {
+        let data = JSON.parse(e.data);
+        console.log(data);
+        switch (data.event) {
+            case "created": {
+                this.notify('unsetSpiner');
+                this.hash = data.payload.hash;
+                cookie.set("hash", this.hash, {})
+                break;
+            }
+            case "restored": {
+                this.resetChat();
+                this.notify('unsetSpiner');
+                data.payload.history.forEach(( m: ChatMessage ) => {
+                    this.unhandledMessages.push(m);
+                })
+                this.notify("newMessage");
+                break;
+            }
+            case "message": {
+                this.unhandledMessages.push(data.payload.message);
+                this.notify("newMessage");
+                break;
+            }
+            case "managerConnected": {
+                break;
+            }
+            default:
+                console.log("Unrekognie");
         }
     }
 }

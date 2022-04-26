@@ -1,9 +1,9 @@
-import { Controller } from './Controller'
-import { View } from './View'
-import { Model } from './Model'
+import { Controller } from './Controller.js'
+import { View } from './View.js'
+import { Model } from './Model.js'
 
 $(document).ready(function(){
-    var model = new Model("sdf");
+    var model = new Model($("#chat-service-url").text().trim());
     var controler = new Controller(model);
     var view = new View(model);
 
@@ -59,24 +59,3 @@ $(document).ready(function(){
 //     buttons?: ChatMessageButton[],
 // }
 
-// const botMessages: Record<string, botMessage> = {
-//     startup:           { text: 'Я - ' + botName },
-//     enterName:         { text: "Как к вам обращаться?" },
-//     returnToManager:   { text: "Тут я бессилен, вызываю оператора." },
-//     waitForManager:    { text: "Пожалуйста, подождите, вам скоро ответят." },
-//     chatClosed:        { text: "Чат закрыт, надеюсь мы помогли вам." },
-//     managerLeaved:     { text: "Менеджер вышел из чата, ищем вам другого." },
-//     historyTurnDelete: { text: "Сообщения больше не будут сохраняться в историю" },
-//     historyTurnSave:   { text: "Сообщения будут сохраняться в историю" },
-//     internalError:     { text: "Ой-ой. Что то пошло не так, пожалуйста, презагрузите страницу." },
-//     serviceNotAvalible:{ text: "Сервис временно не доступен." },
-//     whatBotCan:        { text: "Я умею:</br>Вызывать оператора</br>...В разработке..." },
-
-//     botCommands: {
-//         text: "Чем буду полезен?",
-//         buttons: [
-//             { name: "Список возможностей", value: "_showWhatBotCan" },
-//             { name: 'Вызвать оператора',   value: '_callManager'  }
-//         ]
-//     },
-// }
