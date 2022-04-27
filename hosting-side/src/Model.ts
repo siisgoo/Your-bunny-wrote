@@ -80,7 +80,7 @@ export class Model {
     private connectionState: connState;
     private user: User;
     private history: History;
-    private curManager: ManagerSchema;
+    private curManager?: ManagerSchema;
     // @ts-ignore
     private socket: WebSocket;
     private url: string;
@@ -214,7 +214,7 @@ export class Model {
         return this.subtitle;
     }
 
-    manager(): ManagerSchema {
+    manager(): ManagerSchema | undefined {
         return this.curManager;
     }
 

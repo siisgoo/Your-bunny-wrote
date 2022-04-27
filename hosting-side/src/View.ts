@@ -28,7 +28,7 @@ export class View {
 
         this.isMobile = isMobile();
 
-        this.chatToggle.onTriggered = this.chat.toggle;
+        this.chatToggle.onTriggered = () => this.chat.toggle();
 
         $("#chat-reset").on("click", () => {
             this.chat.clear();

@@ -304,20 +304,19 @@ export class ChatToggle {
     public stillHovered = false;
     public opened = false;
     public readonly el: JQuery<HTMLElement> = $("#chat-toggle");
-    public readonly toggleTirggerEl: JQuery<HTMLElement> = this.el.children("#chat-toggle-text")
 
     public onTriggered: () => void = () => {}
 
     constructor() {
-        this.toggleTirggerEl.on("click", this.onTriggered);
-    }
-
-    init() {
         this.el.hover(
             () => this.show(),
             () => this.hide()
         );
 
+        $("#chat-toggle-text").on("click", () => this.onTriggered());
+    }
+
+    init() {
         // @ts-ignore
         this.el.css("left", -this.el.width());
         this.adjust(1000);
