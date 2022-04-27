@@ -2,7 +2,7 @@
 import express, { Request, Response  } from 'express'
 import * as http from 'http'
 import * as ws from 'ws'
-import { Database, Chat } from './database.js'
+import { Database, Chat, Manager } from './database.js'
 import { ManagerSchema } from './Schemas/Manager'
 import { Config } from './Config.js'
 import { ChatMessage } from './Schemas/ChatMessage'
@@ -96,6 +96,7 @@ class ChatConnection {
             switch (req.target) {
                 case "message": {
                     if (req.payload.message) {
+                        this.chat.appendHistory(req.payload.message);
                         this.onMessage(req.payload.message);
                     } else {
                         console.error("DEBUG: no message payload on targeting message");
@@ -116,19 +117,24 @@ class ChatConnection {
         })
     }
 
-    // private async sync() {
-    //     return super.sync();
-    // }
+    async deconstructor() {
+        await this.destroy();
+    }
 
-    // private async remove() {
-    //     return super.remove();
-    // }
-
-    deconstructor() {
+    async destroy() {
+        if (this.socket.readyState != ws.CLOSED || ws.CLOSING) {
+            this.socket.close(0, "Auto close");
+        }
+        this.chat.online = false;
+        await this.chat.sync();
     }
 
     async close() {
-        this.socket.close(321, "Chat close by manager");
+        let data = {
+            event: "closed",
+            payload: {}
+        }
+        this.socket.send(JSON.stringify(data));
         this.chat.managerId = null;
         this.chat.waitingManager = false;
         await this.chat.sync();
@@ -197,14 +203,13 @@ export class ChatServer {
     async start() {
         this.tunnel = await localtunnel({
             port: Config().server.port,
-            subdomain: "rediirector"
+            subdomain: Config().server.subdomain,
         })
 
-        console.log(this.tunnel.url);
-
         this.HttpServer.listen(Config().server.port, () => {
-            console.log("Starting chat server on " + Config().server.port)
-        });
+            console.log("Starting chat server on " + Config().server.port,
+                        "\n Tunneling to", this.tunnel.url)
+        })
 
         // this.HttpServer.on("upgrade", (req, socket, head) => {
 
@@ -213,8 +218,8 @@ export class ChatServer {
 
     async stop() {
         for (let [k,conn] of this.connections) {
+            await conn.destroy();
             this.connections.delete(k)
-            await conn.close();
         }
         this.listener.close();
         this.HttpServer.close();
@@ -235,7 +240,7 @@ export class ChatServer {
                 let chat = await Chat.findOne({ hash: json.hash });
                 if (!chat) {
                     created = true;
-                    chat = new Chat({ initiator: json.initiator });
+                    chat = new Chat({ initiator: json.initiator, online: true });
                     await chat.sync();
                 }
 
@@ -248,25 +253,31 @@ export class ChatServer {
                     }
                 } else {
                     let history = await chat.getHistory();
+                    chat.online = true;
+                    await chat.sync();
+                    let manager = null;
+                    if (chat.managerId) {
+                    manager = await Manager.findOne({ userId: chat.managerId })
+                    }
                     response = {
                         event: "restored",
                         payload: {
                             chat: chat,
+                            manager: manager,
                             history: history.map(m => m.message)
                         }
                     }
                 }
-
-                socket.send(JSON.stringify(response));
 
                 let connection = new ChatConnection(socket, chat);
                 this.connections.set(chat.hash, connection);
 
                 connection.onMessage = (msg) => this.handleMessage(connection, msg);
                 connection.onManagerRequest = () => this.onChatManagerRequest(connection.chat);
-                connection.onDisconnect = (code) => {
+                connection.onDisconnect = async (code) => {
                     // @ts-ignore
-                    this.onChatClosed(chat, code === 3213); // TODO code
+                    this.onChatClosed(chat, code === 0); // TODO code
+                    await connection.destroy();
                     this.connections.delete(chat!.hash);
                 }
 
@@ -274,6 +285,8 @@ export class ChatServer {
                     // default first message seq
                     connection.answer(Bot.createMessage("startup", 0));
                 }
+
+                socket.send(JSON.stringify(response));
             })
     }
 
@@ -315,9 +328,11 @@ export class ChatServer {
         console.log(chatHash)
         if (this.connections.has(chatHash)) {
             let chat = this.connections.get(chatHash);
-            if (!chat!.chat!.managerId) {
-                chat!.accept(manager);
-                return true;
+            if (chat) {
+                if (!chat.chat!.managerId) {
+                    chat.accept(manager);
+                    return true;
+                }
             }
         }
         return false;
@@ -325,9 +340,11 @@ export class ChatServer {
 
     async closeChat(chatHash: string) {
         let chat = this.connections.get(chatHash);
-        if (chat!.chat!.managerId) {
-            chat!.close();
-            return true;
+        if (chat) {
+            if (chat.chat!.managerId) {
+                chat.close();
+                return true;
+            }
         }
         return false;
     }

@@ -5,7 +5,7 @@
     "main": "chat.js",
     "scripts": {
         "build": "tsc --build --pretty",
-        "postbuild": "tsc --removeComments && minify public/js/chat.js > public/js/chat.js.min"
+        "postbuild": "tsc --removeComments"
     },
     "author": "siisgoo",
     "devDependencies": {

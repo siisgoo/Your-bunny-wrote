@@ -16,6 +16,9 @@ export class Controller {
             case 'resetChat':
                 this.model.resetChat();
                 break;
+            case 'toggleRememberMe':
+                this.model.toggleRememberMe();
+                break;
             // case 'lastMessageInput':
             //     Model.sendLastMessage();
             // break;

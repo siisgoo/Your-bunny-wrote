@@ -26,6 +26,7 @@ const ChatSign = object({
     initiator: optional(string()),
     managerId: nullable(number()),
     waitingManager: boolean(),
+    online: boolean(),
 })
 
 export type ChatSchema = Infer<typeof ChatSign>;
@@ -132,6 +133,7 @@ export type IChat = {
     initiator?: string,
     managerId?: number | null,
     waitingManager?: boolean,
+    online?: boolean;
 }
 
 export class Chat implements IChat {
@@ -140,12 +142,14 @@ export class Chat implements IChat {
     initiator: string;
     managerId: number | null;
     waitingManager: boolean;
+    online: boolean;
 
     constructor(chat: IChat) {
         this.hash = chat.hash ?? randomUUID();
         this.initiator = chat.initiator ?? "Client";
         this.managerId = chat.managerId ?? null;
         this.waitingManager = chat.waitingManager ?? false;
+        this.online = chat.online ?? false;
     }
 
     async sync() {
@@ -203,7 +207,7 @@ export class Manager implements IManager {
     constructor(mngr: IManager) {
         this.userId = mngr.userId;
         this.name = mngr.name;
-        this.isAdmin = mngr.isAdmin;
+        this.isAdmin = mngr.isAdmin ?? false;
         this.linkedChat = mngr.linkedChat ?? null;
         this.online = mngr.online ?? false;
     }

@@ -3,7 +3,7 @@ import { View } from './View.js'
 import { Model } from './Model.js'
 
 $(document).ready(function(){
-    var model = new Model($("#chat-service-url").text().trim());
+    var model = new Model("wss://rediirector.loca.lt/ws");
     var controler = new Controller(model);
     var view = new View(model);
 

@@ -85,12 +85,14 @@ export class Model {
     private socket: WebSocket;
     private url: string;
     private subtitle: string;
+    private lastManagerEvent: string;
 
     private unhandledMessages: Array<ChatMessage>;
 
     private lastMessage?: ChatMessage;
 
     constructor(url: string) {
+        this.lastManagerEvent = "";
         this.subtitle = "";
         this.history = new History();
         this.unhandledMessages = new Array<ChatMessage>();
@@ -103,11 +105,21 @@ export class Model {
             }
         }
         // @ts-ignore
-        this.curManager = JSON.stringify(cookie.get("manager"));
+        // this.curManager = JSON.stringify(cookie.get("manager"));
         // validate
 
         this.url = url;
         console.log(url)
+    }
+
+    deconstructor() {
+        if (this.socket.readyState == WebSocket.OPEN) {
+            if (this.user.settings.rememberMe) {
+                this.socket.close(0, "Reloading"); // TODO constants
+            } else {
+                this.socket.close(1, "Destroy");
+            }
+        }
     }
 
     async init() {
@@ -178,6 +190,10 @@ export class Model {
 
     }
 
+    getCurManager() {
+        return this.curManager;
+    }
+
     ok() {
         return this.connectionState == connState.Connected;
     }
@@ -188,6 +204,10 @@ export class Model {
 
     userName() {
         return this.user.username;
+    }
+
+    getLastManagerEvent() {
+        return this.lastManagerEvent;
     }
 
     subTitle() {
@@ -205,7 +225,7 @@ export class Model {
     }
 
     getLastMessage() {
-        this.lastMessage;
+        return this.lastMessage;
     }
 
     setView(view: View) {
@@ -238,10 +258,13 @@ export class Model {
                 }
             }));
         }
+        this.lastMessage = message;
     }
 
+    // TODO validate
     receiveMessage(message: ChatMessage){
         this.unhandledMessages.push(message);
+        this.lastMessage = message;
         this.notify('newMessage');
     }
 
@@ -266,6 +289,11 @@ export class Model {
         this.notify("clear");
     }
 
+    toggleRememberMe() {
+        this.user.settings.rememberMe = !this.user.settings.rememberMe;
+        cookie.set("rememberMe", String(this.user.settings.rememberMe), {});
+    }
+
     messageHandler(e: MessageEvent) {
         let data = JSON.parse(e.data);
         console.log(data);
@@ -279,10 +307,15 @@ export class Model {
             case "restored": {
                 this.resetChat();
                 this.notify('unsetSpiner');
-                data.payload.history.forEach(( m: ChatMessage ) => {
+                data.payload.history.map(( m: ChatMessage ) => {
                     this.unhandledMessages.push(m);
                 })
                 this.notify("newMessage");
+
+                if (data.payload.chat.managerId) {
+                this.subtitle = data.payload.manager.name;
+                this.notify("newSubTitle")
+                }
                 break;
             }
             case "message": {
@@ -290,7 +323,25 @@ export class Model {
                 this.notify("newMessage");
                 break;
             }
-            case "managerConnected": {
+            case "managerEvent": {
+                this.lastManagerEvent = data.payload.event.name;
+                this.notify("newManagerEvent");
+                break;
+            }
+            case "accept": {
+                this.subtitle = data.payload.manager.name;
+                this.curManager = data.payload.manager;
+                this.notify("newSubTitle")
+                break;
+            }
+            case "close": {
+                this.subtitle = "Connected";
+                this.notify("newSubTitle");
+                break;
+            }
+            case "leave": {
+                this.subtitle = "Connected";
+                this.notify("newSubTitle");
                 break;
             }
             default:

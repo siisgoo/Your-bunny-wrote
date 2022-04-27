@@ -43,8 +43,13 @@ export class View {
                 let text: string = curInput;
                 this.chat.inputField.val('').focus();
                 if (text.trim() !== ''){
+                    let id;
+                    let lastMsg = this.model.getLastMessage();
+                    if (lastMsg) id = lastMsg.id + 1;
+                    else id = 0;
+
                     let msg: ChatMessage = {
-                        id: -1,
+                        id: id,
                         stamp: new Date().getTime(),
                         from: {
                             name: model.userName(),
@@ -82,7 +87,6 @@ export class View {
 
         // Chat settings component
         $("#chat-save-session").on("click", () => {
-            this.notify("toggleRememberMe");
             if (this.model.settings().rememberMe) {
                 $("#chat-save-session")
                     .removeClass("chat-settings-active")
@@ -92,11 +96,13 @@ export class View {
                     .removeClass("chat-settings-diactive")
                     .addClass("chat-settings-active");
             }
+            this.notify("toggleRememberMe");
         });
         $("#chat-save-session").click().click(); // TODO load
 
         this.chat.init();
         this.chatToggle.init();
+        this.chatHeader.init();
 
         this.notify('init');
     }
@@ -112,7 +118,7 @@ export class View {
     update(cmd: string) {
         switch (cmd) {
             case 'newMessage':
-                this.model.pendingMessages().forEach(m => this.chat.appendMessage(m));
+                this.model.pendingMessages().forEach(m => this.chat.appendMessage(m, this.model.getCurManager()));
                 break;
             case 'newSubTitle':
                 this.chatHeader.setSubTitle(this.model.subTitle());
@@ -123,6 +129,9 @@ export class View {
             case 'disable':
                 // this.chat.hide();
                 // this.chatToggle.hide();
+                break;
+            case 'newManagerEvent':
+                this.chat.setManagerEvent(this.model.getLastManagerEvent());
                 break;
             case 'setSpiner':
                 this.chat.setSpiner();

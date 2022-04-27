@@ -1,62 +1,23 @@
 [
 	{
-		"hash": "9a96fb87-0b23-4c2d-8b70-e7122f58455c",
+		"hash": "cb175c46-1403-402b-a868-04713d4ba16c",
 		"initiator": "Client",
 		"managerId": null,
-		"waitingManager": false
+		"waitingManager": false,
+		"online": false
 	},
 	{
-		"hash": "f718a517-af08-4ab8-b922-ae186bc3acae",
+		"hash": "e93abedc-bcee-4b28-b4d7-9ff243b0139f",
 		"initiator": "Client",
 		"managerId": null,
-		"waitingManager": false
+		"waitingManager": false,
+		"online": false
 	},
 	{
-		"hash": "9470a9f6-f9de-4a6f-a867-f29f90a35375",
-		"initiator": "Client",
-		"managerId": null,
-		"waitingManager": false
-	},
-	{
-		"hash": "8845e9e0-69d6-4e5a-a6e5-b28e5cb554a3",
-		"initiator": "Client",
-		"managerId": null,
-		"waitingManager": false
-	},
-	{
-		"hash": "9a820930-f5fb-4534-8583-fb1365bd973d",
-		"initiator": "Client",
-		"managerId": null,
-		"waitingManager": false
-	},
-	{
-		"hash": "8ec1e183-d53a-4ce1-8a64-186eb2d774eb",
-		"initiator": "Client",
-		"managerId": null,
-		"waitingManager": false
-	},
-	{
-		"hash": "92d53c05-9f66-4a36-843b-088af97df076",
-		"initiator": "Client",
-		"managerId": null,
-		"waitingManager": false
-	},
-	{
-		"hash": "629e7c50-8d31-43ce-9e7a-9987ec9ef0c0",
-		"initiator": "Client",
-		"managerId": null,
-		"waitingManager": false
-	},
-	{
-		"hash": "d34f3911-082e-4d66-b115-97d8f4dfdda8",
-		"initiator": "Client",
-		"managerId": null,
-		"waitingManager": true
-	},
-	{
-		"hash": "86a7052e-9408-4c04-b968-f1a035f51a63",
+		"hash": "3e31ce10-0337-4f74-a54f-3e340683f22e",
 		"initiator": "Client",
 		"managerId": 525394327,
-		"waitingManager": false
+		"waitingManager": false,
+		"online": true
 	}
 ]

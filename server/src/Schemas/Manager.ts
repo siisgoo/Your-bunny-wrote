@@ -13,7 +13,7 @@ export type ManagerSchema = Infer<typeof ManagerSign>;
 export interface IManager { // TODO avatar
     userId: number; // telegram user id
     name: string,
-    isAdmin: boolean;
+    isAdmin?: boolean;
     linkedChat?: string | null;
     online?: boolean;
 }

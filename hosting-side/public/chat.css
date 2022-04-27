@@ -187,11 +187,36 @@ html.-is-locked {
     }
 }
 
+#chat-manager-state {
+    position: absolute;
+    color: #42A8DB;
+    border-radius: 90%;
+    font-size: 14px;
+    font-style: italic;
+    display: block;
+    bottom: 0px;
+    right: 40px;
+    z-index: 99999;
+}
+
+.chat-msg > .msg-avatar {
+    display: block;
+    position: relative;
+    bottom: 0px;
+}
+
+.chat-msg.user > .msg-avatar {
+    float:left;
+}
+
+.chat-msg.self > .msg-avatar {
+    float: right;
+}
+
 .chat-msg.user > .msg-avatar img {
     max-width: 45px;
     height: auto;
-    border-radius:50%;
-    float:left;
+    border-radius: 50%;
     /* width:15%; */
 }
 
@@ -199,7 +224,6 @@ html.-is-locked {
     max-width: 45px;
     height: auto;
     border-radius: 50%;
-    float: right;
     /* width:15%; */
 }
 
@@ -213,6 +237,7 @@ html.-is-locked {
     position:relative;
     margin-bottom:20px;
     border-radius:30px;
+    border-top-left-radius: 0%;
     word-wrap: break-word;
 }
 

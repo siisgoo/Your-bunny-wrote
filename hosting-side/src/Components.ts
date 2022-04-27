@@ -1,4 +1,11 @@
 import { ChatMessage } from "Schemas/ChatMessage.js"
+import { ManagerSchema } from "Schemas/Manager.js"
+
+// function sleep(ms: number) {
+//     return new Promise((resolve) => {
+//         setTimeout(resolve, ms);
+//     });
+// }
 
 export class ChatHeader {
     public readonly el: JQuery<HTMLElement> = $("#chat-box-header");
@@ -16,11 +23,14 @@ export class ChatHeader {
         });
     }
 
+    init() {
+    }
+
     // public setTitle(text: string) {
     //     this.el.children("")
     // }
 
-    public setSubTitle(text: string) {
+    public async setSubTitle(text: string) {
         $("#chat-manager-name").text(text);
     }
 }
@@ -65,8 +75,17 @@ export class Chat {
     }
 
     public unsetSpiner() {
-        $("#chat-logs").children(".loader").fadeOut(400, function() { this.remove() });
+        // $("#chat-logs").children(".loader").fadeOut(400, function() { this.remove() });
+        $("#chat-logs").children(".loader").remove();
         $("#chat-logs").children("chat-msg").each(function() { $(this).show() })
+    }
+
+    public setManagerEvent(text?: string) {
+        if (text) {
+            $("#chat-logs #chat-manager-state").text(text);
+        } else {
+            $("#chat-logs #chat-manager-state").text("");
+        }
     }
 
     public hide() {
@@ -206,7 +225,7 @@ export class Chat {
     //     // TODO remove buttons from chatHistory
     // }
 
-    public appendMessage(message: ChatMessage) {
+    public appendMessage(message: ChatMessage, manager?: ManagerSchema) {
         // if (message.id < 0) message.id = this.last_message_id+1;
         // if (message.id <= this.last_message_id) return;
         // this.last_message_id = message.id;
@@ -215,11 +234,16 @@ export class Chat {
         let avatar_url: string = String(); // TODO read from model
         switch (message.from.type) {
             case "bot":
-                avatar_url = "/rediirector/images/avatars/user-icon.png";
+                avatar_url = "/rediirector/images/avatars/bot-icon.png";
                 type = "user";
             break;
             case "manager":
                 type = "user";
+                if (manager) {
+                    avatar_url = "/rediirector/images/avatars/bot-icon.png"; // TODO
+                } else {
+                    avatar_url = "/rediirector/images/avatars/bot-icon.png";
+                }
                 // TODO icon load
                 break;
             case "customer":
@@ -265,7 +289,7 @@ export class Chat {
 
         $('#chat-logs').append(str);
         $("#cm-msg-"+message.id).hide().fadeIn(300);
-        $("#chat-logs").stop().animate({ scrollTop: $("#chat-logs")[0].scrollHeight }, 1000);
+        $("#chat-logs").stop().animate({ scrollTop: $("#chat-logs")[0].scrollHeight }, 0);
     }
 
     public clear(): void {

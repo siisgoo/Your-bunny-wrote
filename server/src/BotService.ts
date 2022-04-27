@@ -17,6 +17,14 @@ export class BotService extends EventEmitter {
 
     public onStop: () => void = () => {}
 
+    private readonly stickers = {
+        welcoming: "CAACAgIAAxkBAAEEh85iYatAqlMz81qfn7Dk303ummYrjwACGBEAAvE40EoZjSpXJ-H1-CQE",
+        happy: "CAACAgIAAxkBAAEEh9BiYatNE-M0LO7eJ6A8rERHIennowAC9A8AAuauOUpmEnHaU53szyQE",
+        sad: "CAACAgIAAxkBAAEEh9ZiYavBfd0mfaBWTzqMeBSYbwkB7wACjxMAAosj2UpwO-yY639C-iQE",
+        evil: "CAACAgIAAxkBAAEEh9JiYate-8ItpkQBSCowdGmwTHzR8wAC0hEAAjnxkUtIXF3Fd0t44iQE",
+        verySad: "CAACAgIAAxkBAAEEh9RiYaueiAN4zPax481xTRns1EYlRQAC0hAAAtOfOEp18SByrhUeJiQE"
+    }
+
     constructor() {
         super();
         this.chatService = new ChatServer();
@@ -81,38 +89,43 @@ export class BotService extends EventEmitter {
 
         this.bot.start(ctx => {
             ctx.reply("Yo");
-            ctx.replyWithSticker("CAACAgIAAxkBAAEEh8ZiYap4c-H3_TzWfSLp5J7fQLZLxQACshIAA3VJSlVDVklAPgmCJAQ");
+            ctx.replyWithSticker(this.stickers.welcoming);
         })
 
         this.bot.action('approve_request', (ctx) => {
             let keyboard = tg.Markup.inlineKeyboard([ [
                 {   text: "Approve",
-                    callback_data: "approve_manager " + ctx!.from!.id },
+                    callback_data: "approve_manager " + ctx.from!.id },
                 {   text: "Reject",
-                    callback_data: "reject_manager " + ctx!.from!.id }
+                    callback_data: "reject_manager " + ctx.from!.id }
             ] ])
             ctx.telegram.sendMessage(Config().bot.admin_id, "Autorization request from @" + ctx.from!.username,
                                      keyboard);
         })
 
-        // this.bot.action('approve_manager', (ctx) => {
+        this.bot.action('approve_manager', async (ctx) => {
+            let userId = Number(ctx.match.input.slice('approve_manager'.length));
+            let member = await this.bot.telegram.getChatMember(userId, userId);
+            await (new Manager({
+                userId: userId,
+                name: member.user.first_name + " " + member.user.last_name,
+            })).sync();
 
-        // });
+            this.bot.telegram.sendMessage(userId, "Your request have been accepted. Now you are can use this bot ... and youa are the member of ...");
+        });
 
-        // this.bot.action('reject_manager', (ctx) => {
-
-        // });
-
-        // TODO
-        // use CAACAgIAAxkBAAEEh9JiYate-8ItpkQBSCowdGmwTHzR8wAC0hEAAjnxkUtIXF3Fd0t44iQE
-        // FOR ONLINE IDLE TIMEOUT
+        this.bot.action('reject_manager', (ctx) => {
+            let userId = Number(ctx.match.input.slice('approve_manager'.length));
+            this.bot.telegram.sendMessage(userId, "Your request have been rejected");
+            this.bot.telegram.sendSticker(userId, this.stickers.evil);
+        });
 
         this.bot.command('goonline', async (ctx) => {
             Database.managers.updateOne({ userId: ctx.from.id }, { online: true });
             ctx.reply("You are online now");
-            ctx.replyWithSticker("CAACAgIAAxkBAAEEh9BiYatNE-M0LO7eJ6A8rERHIennowAC9A8AAuauOUpmEnHaU53szyQE")
+            ctx.replyWithSticker(this.stickers.happy)
 
-            let pending = await Database.chats.findMany({ managerId: null });
+            let pending = await Database.chats.findMany({ managerId: null, online: true });
             if (pending.length > 0) {
                 ctx.reply("During your absence " + pending.length + " peoplec need your help");
                 for (let chat of pending) {
@@ -124,7 +137,7 @@ export class BotService extends EventEmitter {
         this.bot.command('gooffline', (ctx) => {
             Database.managers.updateOne({ userId: ctx.from.id }, { online: false });
             ctx.reply("You are offline now");
-            ctx.replyWithSticker("CAACAgIAAxkBAAEEh9ZiYavBfd0mfaBWTzqMeBSYbwkB7wACjxMAAosj2UpwO-yY639C-iQE");
+            ctx.replyWithSticker(this.stickers.sad);
 
             // TODO delete queries from ctx chat
         });
@@ -142,6 +155,7 @@ export class BotService extends EventEmitter {
             // avoiding ts warning
             if (this.chatService.enterChat(chatHash, ctx.manager)) {
                 ctx.manager.linkToChat(chatHash)
+                await ctx.manager.sync();
                 ctx.reply("Now you are in chat with customer");
             } else {
                 ctx.reply("Selected chat expired");
@@ -153,6 +167,7 @@ export class BotService extends EventEmitter {
             // avoiding ts warning
             if (this.chatService.enterChat(chatHash, ctx.manager)) {
                 ctx.manager.linkToChat(chatHash);
+                await ctx.manager.sync();
                 ctx.reply("Now you are in chat with customer").then(() => next());
             } else {
                 ctx.reply("Selected chat expired").then(() => next());
@@ -163,6 +178,7 @@ export class BotService extends EventEmitter {
             if (ctx.manager.linkedChat) {
                 this.chatService.closeChat(ctx.manager.linkedChat);
                 ctx.manager.unlinkChat();
+                await ctx.manager.sync();
                 ctx.reply("Chat successfuly closed");
             } else {
                 ctx.reply("Close chat command will be avalible only after entering any chat");
@@ -173,6 +189,7 @@ export class BotService extends EventEmitter {
             if (ctx.manager.linkedChat) {
                 this.chatService.leaveChat(ctx.manager.linkedChat);
                 ctx.manager.unlinkChat();
+                await ctx.manager.sync();
                 ctx.reply("Chat successfuly leaved, " + (await Chat.findOne({ managerId: ctx.manager.userId }))!.initiator + " will wait for another manager");
             } else {
                 ctx.reply("Leave chat command will be avalible only after entering any chat");
@@ -223,6 +240,7 @@ export class BotService extends EventEmitter {
                         this.running = true;
                         for (let mngr of await Manager.findMany({  })) {
                             this.bot.telegram.sendMessage(mngr.userId, "Service now online");
+                            this.bot.telegram.sendSticker(mngr.userId, this.stickers.happy);
                         }
                         console.log("Telegram-bot service started");
                     })
@@ -238,6 +256,7 @@ export class BotService extends EventEmitter {
         let mngrs = Database.managers.documents;
         for (let m of mngrs) {
             await this.bot.telegram.sendMessage(m.userId, "Service going offline, your status will be reseted to offline");
+            await this.bot.telegram.sendSticker(m.userId, this.stickers.verySad);
         }
         this.bot.stop();
         await Database.managers.updateMany({ online: true }, { online: false, linkedChat: null });

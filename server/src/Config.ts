@@ -17,7 +17,10 @@ const ConfigSign = object({
             path: string(),
         }),
 
-        port: min(number(), 1000)
+        port: min(number(), 1000),
+
+        subdomain: string(),
+        domain: string(),
     })
 })
 
