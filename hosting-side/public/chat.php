@@ -16,7 +16,7 @@
 // save background capab may be aproached with cookie value
 $root = $_SERVER["DOCUMENT_ROOT"];
 $files = glob($root . "/rediirector/images/backgrounds/*");
-$bg = "http://" . $_SERVER['SERVER_NAME'] . str_replace($root, "", $files[random_int(0, count($files)-1)]);
+$bg = str_replace($root, "", $files[random_int(0, count($files)-1)]);
 /* $bg = "http://" . $_SERVER['SERVER_NAME'] . '/rediirector/images/backgrounds/josdf.gif'; */
 ?>
 

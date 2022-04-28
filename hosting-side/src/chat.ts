@@ -53,9 +53,3 @@ $(document).ready(function(){
 //         });
 //     }
 // }
-
-// interface botMessage {
-//     text: string,
-//     buttons?: ChatMessageButton[],
-// }
-

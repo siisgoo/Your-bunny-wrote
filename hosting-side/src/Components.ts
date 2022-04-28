@@ -16,9 +16,13 @@ export class ChatHeader {
 
         // chat resizing buttons
         $("#chat-vertical-maximize").on("click", () => {
+            $("#chat-vertical-maximize").css("display", "none");
+            $("#chat-vertical-normal").css("display", "block");
             chat.maximizeVerticaly();
         });
         $("#chat-vertical-normal").on("click", () => {
+            $("#chat-vertical-maximize").css("display", "block");
+            $("#chat-vertical-normal").css("display", "none");
             chat.toNormal();
         });
     }
@@ -159,8 +163,6 @@ export class Chat {
     public maximizeVerticaly(then?: () => void) {
         if (!this.resizeLock) {
             this.resizeLock = true;
-            $("#chat-vertical-maximize").css("display", "none");
-            $("#chat-vertical-normal").css("display", "block");
 
             $("#chat-box").animate(
                 {
@@ -177,17 +179,15 @@ export class Chat {
                             this.resizeLock = false;
                             then;
                         }
-                    );
+                    )
                 }
-            );
+            )
         }
     }
 
     public toNormal() {
         if (!this.resizeLock) {
             this.resizeLock = true;
-            $("#chat-vertical-maximize").css("display", "block");
-            $("#chat-vertical-normal").css("display", "none");
 
             this.resizeChat(
                 {
@@ -239,11 +239,10 @@ export class Chat {
             break;
             case "manager":
                 type = "user";
-                if (manager) {
-                    avatar_url = "/rediirector/images/avatars/bot-icon.png"; // TODO
-                } else {
-                    avatar_url = "/rediirector/images/avatars/bot-icon.png";
-                }
+                avatar_url = "/rediirector/images/avatars/bot-icon.png";
+                // if (manager && manager.avatar_url) {
+                //     avatar_url = "/rediirector/images/avatars/bot-icon.png";
+                // }
                 // TODO icon load
                 break;
             case "customer":
