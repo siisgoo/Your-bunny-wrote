@@ -4,13 +4,13 @@
     "description": "rediirector client-side chat logic",
     "main": "chat.js",
     "scripts": {
-        "build": "tsc --build --pretty",
-        "postbuild": "tsc --removeComments"
+        "build": "tsc --build --pretty"
     },
     "author": "siisgoo",
     "devDependencies": {
         "@tsconfig/esm": "^1.0.0",
-        "@types/jquery": "^3.5.14"
+        "@types/jquery": "^3.5.14",
+        "@types/node": "^17.0.30"
     },
     "dependencies": {
         "idb": "^7.0.1",

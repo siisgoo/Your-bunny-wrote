@@ -1,5 +1,6 @@
 // @ts-ignore
-import express, { Request, Response  } from 'express'
+import express, { Express, Request, Response  } from 'express'
+import * as fs from 'fs'
 import * as http from 'http'
 import * as ws from 'ws'
 import { Database, Chat, Manager } from './database.js'
@@ -11,7 +12,7 @@ import localtunnel from 'localtunnel'
 // import { Response as ChatResponse } from './Events.js';
 
 let Bot = (() => {
-    const botName = "Bot-Name";
+    const botName = "Tech-bot";
 
     // use Pick
     type botMsgPreset = { text: string, buttons?: { name: string, value: string }[] }
@@ -60,7 +61,8 @@ let Bot = (() => {
             stamp: new Date().getTime(),
             from: {
                 type: "bot",
-                name: botName
+                name: botName,
+                userid: -1,
             },
             text: "DEBUG: Bot::createMessage: not text in object passed",
             buttons: []
@@ -89,7 +91,11 @@ class ChatConnection {
     constructor(private socket: ws.WebSocket, chat: Chat) {
         this.chat = chat;
 
-        this.socket.on("close", this.onDisconnect);
+        this.socket.on("close", (c, r) => this.onDisconnect(c, r));
+        this.socket.on("error", (e) => { console.log(e); this.onDisconnect(4000, new Buffer("Error" + e.message)) });
+        this.socket.on("unexpected-response", (r) => console.log("Unexpected:", r));
+
+        setTimeout(() => { this.ping() }, 5000);
 
         this.socket.on('message', async (data: ws.RawData) => {
             let req = JSON.parse(data.toString());
@@ -111,7 +117,35 @@ class ChatConnection {
                     this.socket.send(JSON.stringify(res));
                     break;
                 }
+                case "file": {
+                    let res = await Database.files.getFile(req.payload.file.id);
+                    if (res) {
+                        let data = JSON.stringify({
+                            event: "file",
+                            payload: {
+                                file: res,
+                                config: req.payload.config,
+                                data: fs.readFileSync(res.path, { encoding: 'base64' })
+                            }
+                        })
+                        this.socket.send(data)
+                    } else {
+                        this.socket.send(JSON.stringify({
+                            event: "error",
+                            payload: {
+                                code: 123,
+                                text: "No image with id: " + req.payload.file.id
+                            }
+                        }))
+                    }
+                    break;
+                }
+                case "pong": {
+                    setTimeout(() => this.ping(), 5000)
+                    break;
+                }
                 default:
+                    this.onDisconnect(1000, new Buffer("Unrekognized request"));
                     console.log("Unknown target request from chat: ", this.chat.hash, " :", req);
             }
         })
@@ -121,12 +155,21 @@ class ChatConnection {
         await this.destroy();
     }
 
+    private ping() {
+        this.socket.send(JSON.stringify({
+            event: "ping",
+            payload: {}
+        }))
+    }
+
     async destroy() {
         if (this.socket.readyState != ws.CLOSED || ws.CLOSING) {
-            this.socket.close(0, "Auto close");
+            this.socket.close(4000, "Auto close");
         }
-        this.chat.online = false;
-        await this.chat.sync();
+        if (this.chat.online) {
+            this.chat.online = false;
+            await this.chat.sync();
+        }
     }
 
     async close() {
@@ -175,7 +218,7 @@ class ChatConnection {
 
 export class ChatServer {
     private listener: ws.WebSocketServer;
-    private HttpServer: http.Server;
+    // private HttpServer: http.Server;
     // @ts-ignore
     private tunnel;
     private connections: Map<string, ChatConnection>;
@@ -190,10 +233,7 @@ export class ChatServer {
     constructor() {
         this.connections = new Map<string, ChatConnection>();
 
-        let app = express();
-        this.HttpServer = new http.Server(app);
-
-        this.listener = new ws.WebSocketServer({ server: this.HttpServer });
+        this.listener = new ws.WebSocketServer({ port: Config().server.port });
 
         this.listener.on('error', this.errorHandler.bind(this));
         this.listener.on('close', this.closeHandler.bind(this));
@@ -206,14 +246,10 @@ export class ChatServer {
             subdomain: Config().server.subdomain,
         })
 
-        this.HttpServer.listen(Config().server.port, () => {
-            console.log("Starting chat server on " + Config().server.port,
-                        "\n Tunneling to", this.tunnel.url)
-        })
+        this.tunnel.on("error", (e: any) => console.log("LT error:", e));
 
-        // this.HttpServer.on("upgrade", (req, socket, head) => {
-
-        // })
+        console.log("Starting chat server on " + Config().server.port,
+                    "\nTunneling to", this.tunnel.url)
     }
 
     async stop() {
@@ -222,72 +258,114 @@ export class ChatServer {
             this.connections.delete(k)
         }
         this.listener.close();
-        this.HttpServer.close();
+        // this.HttpServer.close();
         this.tunnel.close();
         await Database.chats.updateMany(() => true, { managerId: null, waitingManager: false });
         await Database.chats.save();
         await Database.history.save();
     }
 
-    private connHandler(socket: ws.WebSocket) {
-            // prepare TODO set timeout for get first message
-            socket.once('message', async (msg: ws.RawData) => {
-                let json = JSON.parse(msg.toString());
+    private getJsonFromUrl(url: string): object {
+        if(!url) url = location.href;
+        var question = url.indexOf("?");
+        var hash = url.indexOf("#");
+        if(hash==-1 && question==-1) return {};
+        if(hash==-1) hash = url.length;
+        var query = question==-1 || hash==question+1 ? url.substring(hash) : 
+            url.substring(question+1,hash);
+        var result: object = {};
+        query.split("&").forEach(function(part) {
+            if(!part) return;
+            part = part.split("+").join(" "); // replace every + with space, regexp-free version
+            var eq = part.indexOf("=");
+            var key = eq>-1 ? part.substr(0,eq) : part;
+            var val = eq>-1 ? decodeURIComponent(part.substr(eq+1)) : "";
+            var from = key.indexOf("[");
+            // @ts-ignore
+            if(from==-1) result[decodeURIComponent(key)] = val;
+            else {
+                var to = key.indexOf("]",from);
+                var index = decodeURIComponent(key.substring(from+1,to));
+                key = decodeURIComponent(key.substring(0,from));
+            // @ts-ignore
+                if(!result[key]) result[key] = [];
+            // @ts-ignore
+                if(!index) result[key].push(val);
+            // @ts-ignore
+                else result[key][index] = val;
+            }
+        });
+        return result;
+    }
 
-                // assert type && disconn
+    private async connHandler(socket: ws.WebSocket, req: http.IncomingMessage) {
+        let reqData: any = this.getJsonFromUrl(String(req.url));
 
-                let created = false;
-                let chat = await Chat.findOne({ hash: json.hash });
-                if (!chat) {
-                    created = true;
-                    chat = new Chat({ initiator: json.initiator, online: true });
-                    await chat.sync();
+        console.log("Connection: ", reqData);
+
+        let created = false;
+        // will be overrided, only for ignore ts errors
+        let chat: Chat = new Chat({ initiator: reqData.initiator ?? "Client", online: true, ip: req.connection.remoteAddress ?? "0.0.0.0" });
+        if (reqData.hash || reqData.hash === "") {
+            // @ts-ignore
+            chat = await Chat.findOne({ hash: reqData.hash });
+            if (!chat) {
+                created = true;
+                chat = new Chat({ initiator: reqData.initiator ?? "Client", online: true, ip: req.connection.remoteAddress ?? "0.0.0.0" });
+                await chat.sync();
+            }
+        } else {
+            socket.close(4000, "No params passed")
+        }
+
+        let response;
+
+        if (created) {
+            response = {
+                event: "created",
+                payload: { hash: chat.hash }
+            }
+        } else {
+            let history = await chat.getHistory();
+            chat.online = true;
+            await chat.sync();
+            let manager = null;
+            if (chat.managerId) {
+                manager = await Manager.findOne({ userId: chat.managerId })
+            }
+            response = {
+                event: "restored",
+                payload: {
+                    chat: chat,
+                    manager: manager,
+                    history: history.map(m => m.message)
                 }
+            }
+        }
 
-                let response;
+        let connection = new ChatConnection(socket, chat);
+        this.connections.set(chat.hash, connection);
 
-                if (created) {
-                    response = {
-                        event: "created",
-                        payload: { hash: chat.hash }
-                    }
-                } else {
-                    let history = await chat.getHistory();
-                    chat.online = true;
-                    await chat.sync();
-                    let manager = null;
-                    if (chat.managerId) {
-                    manager = await Manager.findOne({ userId: chat.managerId })
-                    }
-                    response = {
-                        event: "restored",
-                        payload: {
-                            chat: chat,
-                            manager: manager,
-                            history: history.map(m => m.message)
-                        }
-                    }
-                }
+        connection.onMessage = (msg) => { console.log("Message: ", msg); this.handleMessage(connection, msg) };
+        connection.onManagerRequest = () => { console.log("Manager req"); this.onChatManagerRequest(connection.chat) };
+        connection.onDisconnect = async (code) => {
+            console.log("Disconnect", connection.chat, code);
+            await this.onChatClosed(connection.chat, code === 4001); // TODO code
+            let hist = await connection.chat.getHistory()
+            if (!hist.length) {
+                connection.chat.remove();
+            }
+            await connection.destroy();
+            this.connections.delete(connection.chat.hash);
+        }
 
-                let connection = new ChatConnection(socket, chat);
-                this.connections.set(chat.hash, connection);
+        if (created) {
+            // default first message seq
+            connection.answer(Bot.createMessage("startup", 0));
+            connection.answer(Bot.createMessage("whatBotCan", 1));
+        }
 
-                connection.onMessage = (msg) => this.handleMessage(connection, msg);
-                connection.onManagerRequest = () => this.onChatManagerRequest(connection.chat);
-                connection.onDisconnect = async (code) => {
-                    // @ts-ignore
-                    this.onChatClosed(chat, code === 0); // TODO code
-                    await connection.destroy();
-                    this.connections.delete(chat!.hash);
-                }
-
-                if (created) {
-                    // default first message seq
-                    connection.answer(Bot.createMessage("startup", 0));
-                }
-
-                socket.send(JSON.stringify(response));
-            })
+        socket.send(JSON.stringify(response));
     }
 
     // type messageType = "startup" |
@@ -322,6 +400,10 @@ export class ChatServer {
                 }
             }
         }
+    }
+
+    tunnelUrl(): URL {
+        return this.tunnel.url;
     }
 
     enterChat(chatHash: string, manager: ManagerSchema): boolean {
@@ -361,6 +443,7 @@ export class ChatServer {
     async answerTo(chatHash: string, message: ChatMessage): Promise<boolean> {
         let chat = this.connections.get(chatHash);
         if (chat) {
+            message.id = await chat.chat.lastMessageId() + 1;
             return await chat.answer(message);
         }
         return false;

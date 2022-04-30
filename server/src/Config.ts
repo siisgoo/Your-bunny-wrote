@@ -14,6 +14,7 @@ const ConfigSign = object({
         }),
 
         fileStorage: object({
+            public_path: string(),
             path: string(),
         }),
 

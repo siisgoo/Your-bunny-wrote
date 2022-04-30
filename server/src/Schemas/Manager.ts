@@ -1,3 +1,4 @@
+import { FileSign, FileSchema } from './File.js'
 import { nullable, number, object, boolean, string, Infer } from 'superstruct'
 
 export const ManagerSign = object({
@@ -6,6 +7,7 @@ export const ManagerSign = object({
     isAdmin: boolean(),
     linkedChat: nullable(string()),
     online: boolean(),
+    avatar: FileSign
 })
 
 export type ManagerSchema = Infer<typeof ManagerSign>;
@@ -16,4 +18,5 @@ export interface IManager { // TODO avatar
     isAdmin?: boolean;
     linkedChat?: string | null;
     online?: boolean;
+    avatar: FileSchema;
 }

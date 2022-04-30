@@ -1,53 +1,8 @@
 import { ManagerSchema } from 'Schemas/Manager.js'
 import { ChatMessage } from 'Schemas/ChatMessage.js'
-import { IDBPDatabase, openDB, DBSchema } from './../node_modules/idb/build/index.js'
 import { cookie } from './Cookie.js'
 import { View } from './View.js'
-
-interface HistoryIDBSchema extends DBSchema {
-    history: {
-        value: ChatMessage;
-        key: number;
-        indexes: { 'by-id': number }
-    }
-}
-
-export class History {
-    // @ts-ignore
-    private db: IDBPDatabase<HistoryIDBSchema>;
-
-    constructor() {
-    }
-
-    public async open() {
-        const l_db: typeof this.db = await openDB<HistoryIDBSchema>('rediirector', 1, {
-            upgrade(l_db) {
-                l_db.createObjectStore('history', {
-                    keyPath: 'id'
-                })
-                .createIndex("by-id", "id");
-            }
-        })
-
-        this.db = l_db;
-    }
-
-    public async drop() {
-        return await this.db.clear("history");
-    }
-
-    public async getMessage(id: number): Promise<ChatMessage | undefined> {
-        return await this.db.get("history", id);
-    }
-
-    public async getMessages(): Promise<ChatMessage[]> {
-        return await this.db.getAll("history");
-    }
-
-    public async appendHistory(message: ChatMessage) {
-        return await this.db.put("history", message);
-    }
-}
+import { FileSchema } from 'Schemas/File.js'
 
 enum connState {
     Connected,
@@ -64,14 +19,7 @@ interface User {
     settings: Settings;
 }
 
-// enum modelState {
-//     botOperation,
-//     managerOperation,
-//     waitingForManager,
-//     readyToRestore,
-// }
-
-export type Commands = "ShowMessage" | "UpdateTitle"
+// export type Commands = "ShowMessage" | "UpdateTitle"
 
 export class Model {
     private view?: View;
@@ -79,11 +27,10 @@ export class Model {
     // @ts-ignore
     private connectionState: connState;
     private user: User;
-    private history: History;
     private curManager?: ManagerSchema;
     // @ts-ignore
     private socket: WebSocket;
-    private url: string;
+    private url: URL;
     private subtitle: string;
     private lastManagerEvent: string;
 
@@ -91,10 +38,9 @@ export class Model {
 
     private lastMessage?: ChatMessage;
 
-    constructor(url: string) {
+    constructor(url: URL) {
         this.lastManagerEvent = "";
         this.subtitle = "";
-        this.history = new History();
         this.unhandledMessages = new Array<ChatMessage>();
         this.hash = cookie.get("hash") ?? "";
         this.connectionState = connState.Disconnected;
@@ -113,13 +59,6 @@ export class Model {
     }
 
     deconstructor() {
-        if (this.socket.readyState == WebSocket.OPEN) {
-            if (this.user.settings.rememberMe) {
-                this.socket.close(0, "Reloading"); // TODO constants
-            } else {
-                this.socket.close(1, "Destroy");
-            }
-        }
     }
 
     async init() {
@@ -131,25 +70,29 @@ export class Model {
         if (this.user.settings.rememberMe) {
             $("#chat-save-session").addClass("chat-settings-active");
         } else {
-            cookie.set("saveChatSession", "false", {});
+            cookie.set("rememberMe", "false", {});
             $("#chat-save-session").addClass("chat-settings-diactive");
         }
-
-        await this.history.open().then(() => {
-            this.history.getMessages().then(msgs => {
-                msgs.forEach(m => {
-                    this.unhandledMessages.push(m);
-                })
-                this.lastMessage = msgs[msgs.length-1];
-            });
-            this.notify("newMessage");
-        });
 
         this.notify('setSpiner');
     }
 
+    disconnect() {
+        this.socket.onclose = () => {}
+        this.socket.onerror = () => {}
+        if (this.socket.readyState != WebSocket.CLOSED || this.socket.readyState != WebSocket.CONNECTING) {
+            console.log("Closing", this.user.settings.rememberMe)
+            if (this.user.settings.rememberMe) {
+                this.socket.close(4001, "Reloading"); // TODO constants
+            } else {
+                this.socket.close(4002, "Destroy");
+            }
+        }
+    }
+
     connect() {
-        this.socket = new WebSocket(this.url)
+        console.log("Connecting:", this.url+"?hash="+this.hash);
+        this.socket = new WebSocket(this.url+"?hash="+this.hash);
 
         this.subtitle = "Connecting...";
         this.notify("newSubTitle");
@@ -158,29 +101,26 @@ export class Model {
             this.connectionState = connState.Connected;
             this.subtitle = "Connected";
             this.notify("newSubTitle");
-
-            let req = { hash: this.hash }
-            this.socket.send(JSON.stringify(req));
         }
 
         this.socket.onclose = (e) => {
             this.connectionState = connState.Disconnected;
+            console.log("Discon:", e);
             if (e.code !== 1006) {
                 this.subtitle = "Not avalible";
                 this.notify("newSubTitle");
             }
             this.notify('setSpiner');
-            //handle code
+            // reconnection in 5 sec
             setTimeout(() => this.connect(), 5000);
         }
 
         this.socket.onerror = (e) => {
+            console.log("Error:", e);
             this.connectionState = connState.NotAvalible;
             this.subtitle = "Not avalible";
             this.notify("newSubTitle");
             this.notify('setSpiner');
-            //handle code
-            console.log("ERR", e);
             (async () => setTimeout(() => this.notify("disable"), 1000))();
         }
 
@@ -188,6 +128,10 @@ export class Model {
             this.messageHandler(e);
         }
 
+    }
+
+    getServerUrl() {
+        return this.url;
     }
 
     getCurManager() {
@@ -236,6 +180,21 @@ export class Model {
         this.view?.update(cmd);
     }
 
+    getFile(id: string): { file: FileSchema, data: Buffer } | null {
+        let file = localStorage.getItem(id);
+        if (file) {
+            return JSON.parse(file);
+        }
+        return null;
+    }
+
+    requestFile(id: number, toSetId: number) {
+        this.socket.send(JSON.stringify({
+            target: "file",
+            payload: { file: { id: id }, config: { id: toSetId } }
+        }))
+    }
+
     // TODO spam detect
     sendMessage(message: ChatMessage) {
         message.text.trim();
@@ -262,7 +221,7 @@ export class Model {
     }
 
     // TODO validate
-    receiveMessage(message: ChatMessage){
+    receiveMessage(message: ChatMessage) {
         this.unhandledMessages.push(message);
         this.lastMessage = message;
         this.notify('newMessage');
@@ -272,7 +231,7 @@ export class Model {
         params.length = 0;
         switch (action) {
             case "clear": {
-                this.view?.notify("clear");
+                this.notify("clear");
                 return false;
             }
             default: {
@@ -282,7 +241,6 @@ export class Model {
     }
 
     resetChat() {
-        this.history.drop();
         this.unhandledMessages.splice(0);
         this.unhandledMessages.length = 0;
         this.lastMessage = undefined;
@@ -308,18 +266,19 @@ export class Model {
                 this.resetChat();
                 this.notify('unsetSpiner');
                 data.payload.history.map(( m: ChatMessage ) => {
-                    this.unhandledMessages.push(m);
+                    this.receiveMessage(m);
                 })
-                this.notify("newMessage");
+                // this.notify("newMessage");
 
                 if (data.payload.chat.managerId) {
-                this.subtitle = data.payload.manager.name;
-                this.notify("newSubTitle")
+                    this.curManager = data.payload.manager;
+                    this.subtitle = data.payload.manager.name;
+                    this.notify("newSubTitle")
                 }
                 break;
             }
             case "message": {
-                this.unhandledMessages.push(data.payload.message);
+                this.receiveMessage(data.payload.message)
                 this.notify("newMessage");
                 break;
             }
@@ -331,17 +290,34 @@ export class Model {
             case "accept": {
                 this.subtitle = data.payload.manager.name;
                 this.curManager = data.payload.manager;
+                this.requestFile(this.curManager!.avatar.file_id, this.curManager!.userId);
                 this.notify("newSubTitle")
                 break;
             }
-            case "close": {
+            case "closed": {
                 this.subtitle = "Connected";
                 this.notify("newSubTitle");
                 break;
             }
-            case "leave": {
+            case "leaved": {
                 this.subtitle = "Connected";
                 this.notify("newSubTitle");
+                break;
+            }
+            case "ping": {
+                this.socket.send(JSON.stringify({
+                    target: "pong",
+                    payload: {}
+                }))
+                break;
+            }
+            case "file": {
+                this.notify("file");
+                localStorage.setItem(data.payload.config.id, JSON.stringify(data.payload));
+                break;
+            }
+            case "error": {
+                console.log(data);
                 break;
             }
             default:

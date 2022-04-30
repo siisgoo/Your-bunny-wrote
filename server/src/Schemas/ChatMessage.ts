@@ -8,7 +8,8 @@ export const ChatMessageSign = object({
     stamp: number(),
     from: object({
         type: SenderSign,
-        name: string()
+        name: string(),
+        userid: number(),
     }),
     text: string(),
 

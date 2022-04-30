@@ -2,15 +2,25 @@ import { Controller } from './Controller.js'
 import { View } from './View.js'
 import { Model } from './Model.js'
 
+let model: Model;
+
 $(document).ready(function(){
-    var model = new Model("wss://rediirector.loca.lt/ws");
-    var controler = new Controller(model);
-    var view = new View(model);
+    model = new Model(new URL("wss://testrediirector.loca.lt/ws"));
+    let controler = new Controller(model);
+    let view = new View(model);
 
     model.setView(view);
     view.setController(controler);
     view.init();
 });
+
+window.onunload = async () => {
+    model.disconnect();
+}
+window.onbeforeprint = async () => {
+    model.disconnect();
+}
+
 
 // type Listener = (...args: any[]) => void
 // type Events = { [event: string]: Listener[]  };

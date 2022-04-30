@@ -19,10 +19,10 @@ export class BotService extends EventEmitter {
 
     private readonly stickers = {
         welcoming: "CAACAgIAAxkBAAEEh85iYatAqlMz81qfn7Dk303ummYrjwACGBEAAvE40EoZjSpXJ-H1-CQE",
-        happy: "CAACAgIAAxkBAAEEh9BiYatNE-M0LO7eJ6A8rERHIennowAC9A8AAuauOUpmEnHaU53szyQE",
-        sad: "CAACAgIAAxkBAAEEh9ZiYavBfd0mfaBWTzqMeBSYbwkB7wACjxMAAosj2UpwO-yY639C-iQE",
-        evil: "CAACAgIAAxkBAAEEh9JiYate-8ItpkQBSCowdGmwTHzR8wAC0hEAAjnxkUtIXF3Fd0t44iQE",
-        verySad: "CAACAgIAAxkBAAEEh9RiYaueiAN4zPax481xTRns1EYlRQAC0hAAAtOfOEp18SByrhUeJiQE"
+        happy:     "CAACAgIAAxkBAAEEh9BiYatNE-M0LO7eJ6A8rERHIennowAC9A8AAuauOUpmEnHaU53szyQE",
+        sad:       "CAACAgIAAxkBAAEEh9ZiYavBfd0mfaBWTzqMeBSYbwkB7wACjxMAAosj2UpwO-yY639C-iQE",
+        evil:      "CAACAgIAAxkBAAEEh9JiYate-8ItpkQBSCowdGmwTHzR8wAC0hEAAjnxkUtIXF3Fd0t44iQE",
+        verySad:   "CAACAgIAAxkBAAEEh9RiYaueiAN4zPax481xTRns1EYlRQAC0hAAAtOfOEp18SByrhUeJiQE",
     }
 
     constructor() {
@@ -43,18 +43,21 @@ export class BotService extends EventEmitter {
         }
 
         this.chatService.onChatClosed = async (chat: Chat, waitReq: boolean) => {
-            if (waitReq) {
-                this.bot.telegram.sendMessage(Number(chat.managerId), "Client reloading page or something, you still can leave or close this chat");
-            } else {
-                chat.managerId = null;
-                await chat.sync();
-                this.bot.telegram.sendMessage(Number(chat.managerId), "Client closed chat");
+            if (chat.managerId) {
+                if (waitReq) {
+                    this.bot.telegram.sendMessage(chat.managerId, "Client reloading page or something, you still can leave or close this chat");
+                } else {
+                    this.bot.telegram.sendMessage(chat.managerId, "Client closed chat");
+                    chat.managerId = null;
+                    await chat.sync();
+                }
             }
         }
 
         this.chatService.onChatMessage = async (chat: Chat, message: ChatMessage) => {
-            if (chat.managerId) { // mean connected?
-                this.bot.telegram.sendMessage(chat.managerId, message.from.name + ":\n" + message.text);
+            if (chat.managerId) {
+                // this.bot.telegram.sendMessage(chat.managerId, message.from.name + ":\n" + message.text);
+                this.bot.telegram.sendMessage(chat.managerId, chat.initiator + ":\n" + message.text);
                 // if (message.attachments.length) {
                 //     message.attachments.forEach(async (a) => {
                 //         switch (a.file_mime) {
@@ -109,6 +112,7 @@ export class BotService extends EventEmitter {
             await (new Manager({
                 userId: userId,
                 name: member.user.first_name + " " + member.user.last_name,
+                avatar: await Database.files.getDefaultAvatar()
             })).sync();
 
             this.bot.telegram.sendMessage(userId, "Your request have been accepted. Now you are can use this bot ... and youa are the member of ...");
@@ -125,7 +129,7 @@ export class BotService extends EventEmitter {
             ctx.reply("You are online now");
             ctx.replyWithSticker(this.stickers.happy)
 
-            let pending = await Database.chats.findMany({ managerId: null, online: true });
+            let pending = await Database.chats.findMany((ch) => { return !ch.managerId && ch.online && ch.waitingManager });
             if (pending.length > 0) {
                 ctx.reply("During your absence " + pending.length + " peoplec need your help");
                 for (let chat of pending) {
@@ -199,11 +203,12 @@ export class BotService extends EventEmitter {
         this.bot.on('text', async ctx => {
             if (ctx.manager.linkedChat) {
                 this.chatService.answerTo(ctx.manager.linkedChat, {
-                    id: -1,
+                    id: 0, // deligate to chatService
                     stamp: ctx.message.date,
                     from: {
                         name: ctx.manager.name,
-                        type: 'manager'
+                        type: 'manager',
+                        userid: ctx.manager.userId
                     },
                     text: ctx.message.text,
                     buttons: []
@@ -223,14 +228,15 @@ export class BotService extends EventEmitter {
 
     async start() {
         Database.managers.findOne({ userId: Config().bot.admin_id })
-            .then(e => {
+            .then(async e => {
                 if (!e) {
                     Database.managers.insertOne({
                         isAdmin: true,
                         name: "Admin",
                         userId: Config().bot.admin_id,
                         linkedChat: null,
-                        online: false
+                        online: false,
+                        avatar: await Database.files.getDefaultAvatar()
                     })
                 }
             })

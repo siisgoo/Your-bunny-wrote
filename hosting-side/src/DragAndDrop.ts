@@ -51,6 +51,7 @@ export class DragDrop {
 
         this.OffsetX = item.position().left;
         this.OffsetY = item.position().top;
+        this.item.trigger("onPositionChanged");
 
         // @ts-ignore
         this.item.onPositionChanged(this.updateOffset.bind(this));
@@ -118,6 +119,25 @@ export class DragDrop {
             } else {
                 this.CurrentX = e.clientX - this.InitialX;
                 this.CurrentY = e.clientY - this.InitialY;
+            }
+
+            this.CurrentX += window.pageXOffset;
+            this.CurrentY -= window.pageYOffset;
+
+            if (this.CurrentX+40 + (this.item.outerWidth() ?? 0) >= window.outerWidth) {
+                this.CurrentX = window.outerWidth - 4 - (this.item.outerWidth() ?? 0);
+            }
+
+            if (this.CurrentX-40 <= 0) {
+                this.CurrentX = 4;
+            }
+
+            if (this.CurrentY-40 <= 0) {
+                this.CurrentY = 4;
+            }
+
+            if (this.CurrentY+40 + (this.item.outerHeight() ?? 0) >= window.outerHeight) {
+                this.CurrentY = window.outerHeight - 4 - (this.item.outerHeight() ?? 0);
             }
 
             this.OffsetX = this.CurrentX;

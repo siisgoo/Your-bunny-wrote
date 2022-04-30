@@ -1,18 +1,30 @@
 import * as fs from 'fs'
+import * as crypt from 'crypto'
+import * as https from 'https'
+import * as mime from 'mime-types'
 import { Database as ADatabase } from 'aloedb-node'
-import { optional, assert, nullable, object, boolean, number, string, Infer } from 'superstruct'
+import { assert, object, boolean, string, Infer } from 'superstruct'
 import { randomUUID } from 'crypto'
 import { Config } from './Config.js'
-// import cache from 'node-cache';
 
 import { FileSchema, FileSign } from './Schemas/File.js'
 import { ManagerSign, ManagerSchema, IManager } from './Schemas/Manager.js'
 import { ChatMessage, ChatMessageSign } from './Schemas/ChatMessage.js'
+import { ChatSign, ChatSchema, IChat } from './Schemas/Chat.js'
 
 // TODO add some caching abilities
 
-if (!fs.existsSync(Config().server.database.path)) {
-    fs.mkdirSync(Config().server.database.path, { recursive: true })
+const dirs = [
+    Config().server.database.path,
+    Config().server.fileStorage.path,
+    Config().server.fileStorage.path,
+    Config().server.fileStorage.path + "/static"
+]
+
+for (let dir of dirs) {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+    }
 }
 
 const MessageSign = object({
@@ -21,15 +33,6 @@ const MessageSign = object({
     readed: boolean(),
 })
 
-const ChatSign = object({
-    hash: string(),
-    initiator: optional(string()),
-    managerId: nullable(number()),
-    waitingManager: boolean(),
-    online: boolean(),
-})
-
-export type ChatSchema = Infer<typeof ChatSign>;
 export type MessageSchema = Infer<typeof MessageSign>;
 
 const ChatEntryValidator = (document: any) => assert(document, ChatSign)
@@ -64,7 +67,7 @@ const history = new ADatabase<MessageSchema>({
     schemaValidator: MessageEntryValidator,
 });
 
-const files = new ADatabase<FileSchema>({
+const files_db = new ADatabase<FileSchema>({
     path: Config().server.database.path + "/files.json",
     pretty: true,
     autoload: true,
@@ -73,20 +76,58 @@ const files = new ADatabase<FileSchema>({
     schemaValidator: FileEntryValidator,
 });
 
-export const Database = { managers, chats, history, files }
-
 // TODO purpose - delete emty chats and split or delete old messages
 // class Cleaner {
 
 // }
 
-// export interface IFile {
+if (!fs.existsSync(Config().server.fileStorage.path + "/static/manager-icon.png")) {
+    console.log(process.cwd());
+    fs.copyFileSync("assets/manager-icon.png", Config().server.fileStorage.path + "/static/manager-icon.png")
+    files_db.insertOne({
+        file_id: 0,
+        file_mime: "image/png",
+        path: Config().server.fileStorage.path + "/static/manager-icon.png",
+        group: "static",
+    })
+}
 
-// }
+export class Files {
+    constructor() { }
 
-// export class File implements IFile {
+    async getFile(id: number): Promise<FileSchema | null> {
+        return await files_db.findOne({ file_id: id });
+    }
 
-// }
+    async saveFile(url: string, group: string) {
+        return await https.get(url, (res) => {
+            if (res.statusCode == 200) { // best string size: Number.MAX_INT ... TODO
+                const filename = crypt.randomBytes(30).toString().slice(0, 30);
+                const path = Config().server.fileStorage.path + "/" + filename;
+                const filepath = fs.createWriteStream(path);
+                res.pipe(filepath);
+                filepath.on("finish", () => {
+                    files_db.insertOne({
+                        file_id: crypt.randomInt(Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
+                        file_mime: mime.lookup(path) || "unknown",
+                        path: path,
+                        group: group
+                    })
+                });
+
+                return true;
+            } else {
+                return false;
+            }
+        })
+    }
+
+    async getDefaultAvatar(): Promise<FileSchema> {
+        return <FileSchema>(await this.getFile(0));
+    }
+}
+
+export const Database = { managers, chats, history, files: new Files() }
 
 export class Message implements MessageSchema {
     message: ChatMessage;
@@ -128,14 +169,6 @@ export class Message implements MessageSchema {
     }
 }
 
-export type IChat = {
-    hash?: string,
-    initiator?: string,
-    managerId?: number | null,
-    waitingManager?: boolean,
-    online?: boolean;
-}
-
 export class Chat implements IChat {
     // id: number;
     readonly hash: string;
@@ -143,6 +176,7 @@ export class Chat implements IChat {
     managerId: number | null;
     waitingManager: boolean;
     online: boolean;
+    ip: string;
 
     constructor(chat: IChat) {
         this.hash = chat.hash ?? randomUUID();
@@ -150,6 +184,7 @@ export class Chat implements IChat {
         this.managerId = chat.managerId ?? null;
         this.waitingManager = chat.waitingManager ?? false;
         this.online = chat.online ?? false;
+        this.ip = chat.ip;
     }
 
     async sync() {
@@ -203,6 +238,7 @@ export class Manager implements IManager {
     isAdmin: boolean;
     linkedChat: string | null;
     online: boolean;
+    avatar: FileSchema;
 
     constructor(mngr: IManager) {
         this.userId = mngr.userId;
@@ -210,6 +246,7 @@ export class Manager implements IManager {
         this.isAdmin = mngr.isAdmin ?? false;
         this.linkedChat = mngr.linkedChat ?? null;
         this.online = mngr.online ?? false;
+        this.avatar = mngr.avatar;
     }
 
     async sync() {

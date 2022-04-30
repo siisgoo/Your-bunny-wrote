@@ -1,11 +1,6 @@
 import { ChatMessage } from "Schemas/ChatMessage.js"
-import { ManagerSchema } from "Schemas/Manager.js"
-
-// function sleep(ms: number) {
-//     return new Promise((resolve) => {
-//         setTimeout(resolve, ms);
-//     });
-// }
+import { Model } from './Model.js'
+// import WebLoader from './loader.js'
 
 export class ChatHeader {
     public readonly el: JQuery<HTMLElement> = $("#chat-box-header");
@@ -34,7 +29,7 @@ export class ChatHeader {
     //     this.el.children("")
     // }
 
-    public async setSubTitle(text: string) {
+    public setSubTitle(text: string) {
         $("#chat-manager-name").text(text);
     }
 }
@@ -44,6 +39,7 @@ export class Chat {
 
     private resizeLock: boolean = false;
     private hidden: boolean = false;
+    // private loader: WebLoader;
     readonly initialPosition: JQuery.Coordinates;
     readonly initialSize: { height: number, width: number };
 
@@ -53,7 +49,8 @@ export class Chat {
 
     private readonly notifySound = new Audio("/rediirector/sounds/chat-notify.mp3");
 
-    constructor() {
+    constructor(private model: Model) {
+        // this.loader = new WebLoader();
         this.initialPosition = $("#chat-box").position();
         this.initialSize = {
             height: <number>$("#chat-box").innerHeight(),
@@ -74,13 +71,17 @@ export class Chat {
     public setSpiner() {
         if (!$("#chat-logs").find(".loader").length) {
             $("#chat-logs .chat-msg").each(function() { $(this).hide() })
-            $("#chat-logs").append("<div class=\"loader\"></div>")
+            $("#chat-logs").append('<span class="loader"></span>');
+            // $("#chat-logs").append("<canvas class=\"web-loader\" style=\"height: 200px; width: 200px;\"></canvas>");
+            // $("#chat-logs .web-loader").width($("#chat-logs").width() ?? 100).height($("#chat-logs").height() ?? 100);
+            // this.loader.start(<HTMLCanvasElement>$("#chat-logs .web-loader")[0]);
         }
     }
 
     public unsetSpiner() {
-        // $("#chat-logs").children(".loader").fadeOut(400, function() { this.remove() });
-        $("#chat-logs").children(".loader").remove();
+        // this.loader.stop();
+        // $("#chat-logs").children(".loader").fadeOut(0, function() { this.remove() });
+        $("#chat-logs .loader").each(function() { $(this).remove() })
         $("#chat-logs").children("chat-msg").each(function() { $(this).show() })
     }
 
@@ -225,8 +226,7 @@ export class Chat {
     //     // TODO remove buttons from chatHistory
     // }
 
-    public appendMessage(message: ChatMessage, manager?: ManagerSchema) {
-        // if (message.id < 0) message.id = this.last_message_id+1;
+    public appendMessage(message: ChatMessage) {
         // if (message.id <= this.last_message_id) return;
         // this.last_message_id = message.id;
 
@@ -239,10 +239,15 @@ export class Chat {
             break;
             case "manager":
                 type = "user";
-                avatar_url = "/rediirector/images/avatars/bot-icon.png";
-                // if (manager && manager.avatar_url) {
-                //     avatar_url = "/rediirector/images/avatars/bot-icon.png";
-                // }
+                avatar_url = "/rediirector/images/avatars/user-icon.png";
+                if (message.from.userid > 0) {
+                    let file = this.model.getFile(message.from.userid.toString());
+                    if (file) {
+                        avatar_url = "data:image/png;base64," + file.data.toString();
+                    } else {
+                        avatar_url = "/rediirector/images/avatars/user-icon.png";
+                    }
+                }
                 // TODO icon load
                 break;
             case "customer":
@@ -288,7 +293,7 @@ export class Chat {
 
         $('#chat-logs').append(str);
         $("#cm-msg-"+message.id).hide().fadeIn(300);
-        $("#chat-logs").stop().animate({ scrollTop: $("#chat-logs")[0].scrollHeight }, 0);
+        $("#chat-logs").stop().animate({ scrollTop: $("#chat-logs")[0].scrollHeight }, 700);
     }
 
     public clear(): void {

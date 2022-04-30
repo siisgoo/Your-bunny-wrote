@@ -22,7 +22,7 @@ export class View {
     private isMobile: boolean;
 
     constructor(private model: Model) {
-        this.chat = new Chat();
+        this.chat = new Chat(model);
         this.chatHeader = new ChatHeader(this.chat);
         this.chatToggle = new ChatToggle();
 
@@ -53,7 +53,8 @@ export class View {
                         stamp: new Date().getTime(),
                         from: {
                             name: model.userName(),
-                            type: "customer"
+                            type: "customer",
+                            userid: 0
                         },
                         text: text
                     }
@@ -118,7 +119,7 @@ export class View {
     update(cmd: string) {
         switch (cmd) {
             case 'newMessage':
-                this.model.pendingMessages().forEach(m => this.chat.appendMessage(m, this.model.getCurManager()));
+                this.model.pendingMessages().forEach(m => this.chat.appendMessage(m));
                 break;
             case 'newSubTitle':
                 this.chatHeader.setSubTitle(this.model.subTitle());
@@ -139,6 +140,9 @@ export class View {
             case 'unsetSpiner':
                 this.chat.unsetSpiner();
                 break;
+            // case 'file':
+                
+            //     break;
             // case 'autoComplete':
             //  handleAutoCompletion(Model.getAwaitingAutoComplete());
             // break;
