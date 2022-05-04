@@ -1,25 +1,52 @@
 import { ChatMessage } from './Schemas/ChatMessage.js'
-// import { ManagerSchema } from './database.js'
+import { FileSchema } from './Schemas/File.js'
+import { ChatSchema } from './Schemas/Chat.js'
+import { ManagerSchema } from './Schemas/Manager.js'
 
-//export interface Response<T extends keyof EventsMap> {
-//    event: T,
-//    payload: EventsMap[T],
-//}
-
-////
-
-export interface TargetMap extends Record<string, object> {
-    'message': {
-        message: ChatMessage
-    },
-    'managerRequest': { },
-    'getOnline': {  },
+export type res_em = {
+    "created": { payload: { hash: string } };
+    "restored": {
+        payload: {
+            chat: ChatSchema,
+            history: ChatMessage[]
+        }
+    };
+    "accept": { payload: { manager: ManagerSchema } };
+    "message": ChatMessage;
+    "close": void;
+    "leave": void;
+    "ping": void;
+    "file": {
+        config: {
+            id: string;
+        }
+        file: FileSchema
+    };
 }
 
-export interface Request<T extends keyof TargetMap> {
-    target: T,
-    payload: TargetMap[T],
-}
+// export const res_em_sign = object({
+//     "created": object(object({ hash: string() })),
+//     "restored": object({
+//         chat: ChatSchema,
+//         history: ChatMessage[]
+//     }),
+//     "accept": { payload: { manager: ManagerSchema } },
+//     "message": ChatMessage,
+//     "close": void,
+//     "leave": void,
+//     "ping": void,
+//     "file": {
+//         config: {
+//             id: string;
+//         }
+//         file: FileSchema
+//     },
+// })
 
-export type ServerDisconnectReason = "Timeout" | "ClosedByManager";
-export type ClientDisconnectReason = "EndChat" | "Reloading";
+export type req_em = {
+    "managerReq": void;
+    "getOnline": void;
+    "message": ChatMessage;
+    "file": { id: number, config: { id: string } } ;
+    "pong": void;
+}

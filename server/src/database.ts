@@ -1,6 +1,6 @@
 import * as fs from 'fs'
 import * as crypt from 'crypto'
-import * as https from 'https'
+import download from 'download'
 import * as mime from 'mime-types'
 import { Database as ADatabase } from 'aloedb-node'
 import { assert, object, boolean, string, Infer } from 'superstruct'
@@ -10,7 +10,7 @@ import { Config } from './Config.js'
 import { FileSchema, FileSign } from './Schemas/File.js'
 import { ManagerSign, ManagerSchema, IManager } from './Schemas/Manager.js'
 import { ChatMessage, ChatMessageSign } from './Schemas/ChatMessage.js'
-import { ChatSign, ChatSchema, IChat } from './Schemas/Chat.js'
+import { ChatSign, ChatSchema, IChat, ChatStage } from './Schemas/Chat.js'
 
 // TODO add some caching abilities
 
@@ -82,7 +82,6 @@ const files_db = new ADatabase<FileSchema>({
 // }
 
 if (!fs.existsSync(Config().server.fileStorage.path + "/static/manager-icon.png")) {
-    console.log(process.cwd());
     fs.copyFileSync("assets/manager-icon.png", Config().server.fileStorage.path + "/static/manager-icon.png")
     files_db.insertOne({
         file_id: 0,
@@ -99,27 +98,47 @@ export class Files {
         return await files_db.findOne({ file_id: id });
     }
 
-    async saveFile(url: string, group: string) {
-        return await https.get(url, (res) => {
-            if (res.statusCode == 200) { // best string size: Number.MAX_INT ... TODO
-                const filename = crypt.randomBytes(30).toString().slice(0, 30);
-                const path = Config().server.fileStorage.path + "/" + filename;
-                const filepath = fs.createWriteStream(path);
-                res.pipe(filepath);
-                filepath.on("finish", () => {
-                    files_db.insertOne({
-                        file_id: crypt.randomInt(Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
-                        file_mime: mime.lookup(path) || "unknown",
-                        path: path,
-                        group: group
-                    })
-                });
+    async saveFile(url: string, group: string): Promise<FileSchema | null> {
+        const _mime = mime.lookup(url);
+        const ext = _mime ? mime.extension(_mime) : null;
+        const sufix = (ext ? "." + ext : "");
+        // best string size: Number.MAX_INT ... TODO
+        const filename = crypt.randomBytes(30).toString('hex').slice(0, 30) + sufix;
+        const path = Config().server.fileStorage.path + '/' + filename;
+        let res = await download(url, Config().server.fileStorage.path, { filename: filename });
 
-                return true;
-            } else {
-                return false;
-            }
-        })
+        let schema = { //Number(crypt.randomInt(Number.MIN_SAFE_INTEGER+1, Number.MAX_SAFE_INTEGER-1)),
+            file_id: Number(crypt.randomInt(281474976710655)),
+            file_mime: mime.lookup(path) || "unknown",
+            path: path,
+            group: group
+        }
+        if (res) {
+            await files_db.insertOne(schema)
+            return schema;
+        } else {
+            return null;
+        }
+        // await https.get(url, (res) => {
+        //     if (res.statusCode == 200) { // best string size: Number.MAX_INT ... TODO
+        //         const filename = crypt.randomBytes(30).toString().slice(0, 30);
+        //         const path = Config().server.fileStorage.path + "/" + filename;
+        //         const filepath = fs.createWriteStream(path);
+        //         res.pipe(filepath);
+        //         filepath.on("finish", () => {
+        //             files_db.insertOne({
+        //                 file_id: crypt.randomInt(Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
+        //                 file_mime: mime.lookup(path) || "unknown",
+        //                 path: path,
+        //                 group: group
+        //             })
+        //         });
+
+        //         return true;
+        //     } else {
+        //         return false;
+        //     }
+        // })
     }
 
     async getDefaultAvatar(): Promise<FileSchema> {
@@ -170,33 +189,82 @@ export class Message implements MessageSchema {
 }
 
 export class Chat implements IChat {
-    // id: number;
     readonly hash: string;
     initiator: string;
     managerId: number | null;
     waitingManager: boolean;
     online: boolean;
+    stage: number;
     ip: string;
 
     constructor(chat: IChat) {
         this.hash = chat.hash ?? randomUUID();
-        this.initiator = chat.initiator ?? "Client";
+        this.initiator = chat.initiator ?? "";
         this.managerId = chat.managerId ?? null;
         this.waitingManager = chat.waitingManager ?? false;
         this.online = chat.online ?? false;
+        this.stage = chat.stage ?? ChatStage.default;
         this.ip = chat.ip;
     }
 
     async sync() {
         if (await chats.findOne({ hash: this.hash })) {
-            return await chats.updateOne({ hash: this.hash }, this);
+            this.update();
         } else {
-            return await chats.insertOne(this);
+            this.insert();
         }
+    }
+
+    async update() {
+        return await chats.updateOne({ hash: this.hash }, this);
+    }
+
+    async insert() {
+        return await chats.insertOne(this);
     }
 
     async remove() {
         return await chats.deleteOne({ hash: this.hash });
+    }
+
+    async setStage(stage: ChatStage) {
+        this.stage = stage;
+        return await this.sync();
+    }
+
+    async setInitiatorName(name: string) {
+        this.initiator = name;
+        return this.sync();
+    }
+
+    async setOnline(online: boolean) {
+        this.online = online;
+        return await this.sync();
+    }
+
+    async setWaitingStatus(waiting: boolean) {
+        this.waitingManager = waiting;
+        return await this.sync();
+    }
+
+    async linkManager(user_id: number) {
+        this.managerId = user_id;
+        this.stage = ChatStage.managerLink;
+        return await this.sync();
+    }
+
+    async unlinkManager() {
+        this.managerId = null;
+        this.stage = ChatStage.smartHandling;
+        return await this.sync();
+    }
+
+    async getLinkedManager(): Promise<Manager | null> {
+        if (this.managerId) {
+            return await Manager.findOne({ userId: this.managerId });
+        } else {
+            return null;
+        }
     }
 
     async lastMessageId(): Promise<number> {
@@ -238,7 +306,7 @@ export class Manager implements IManager {
     isAdmin: boolean;
     linkedChat: string | null;
     online: boolean;
-    avatar: FileSchema;
+    avatar: number;
 
     constructor(mngr: IManager) {
         this.userId = mngr.userId;
@@ -261,15 +329,30 @@ export class Manager implements IManager {
         return managers.deleteOne({ userId: this.userId });
     }
 
-    // TODO make linkToChat as an object and choose sync by objec creation
-    linkToChat(hash: string) {
-        this.linkedChat = hash;
-        return managers.updateOne({ linkedChat: hash }, this);
+    async setOnline(online: boolean) {
+        this.online = online;
+        return await this.sync();
     }
 
-    unlinkChat() {
+    async setName(name: string) {
+        this.name = name;
+        return await this.sync();
+    }
+
+    async setAvatar(file_id: number) {
+        this.avatar = file_id;
+        return await this.sync();
+    }
+
+    // TODO make linkToChat as an object and choose sync by objec creation
+    async linkToChat(hash: string) {
+        this.linkedChat = hash;
+        return await this.sync();
+    }
+
+    async unlinkChat() {
         this.linkedChat = null;
-        return managers.updateOne({ linkedChat: null }, this);
+        return await this.sync();
     }
 
     static async findOne(query: Partial<IManager>): Promise<Manager | null> {

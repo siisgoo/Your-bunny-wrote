@@ -1,10 +1,11 @@
 [
 	{
-		"hash": "5ca46fff-6d15-4e07-a437-0cf3a76083c5",
-		"initiator": "Client",
+		"hash": "27feb194-33ae-463a-8000-ea55b5fac1a2",
+		"initiator": "jopka",
 		"managerId": null,
 		"waitingManager": false,
 		"online": false,
+		"stage": -1,
 		"ip": "::1"
 	}
 ]

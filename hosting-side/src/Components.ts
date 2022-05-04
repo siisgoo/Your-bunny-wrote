@@ -226,6 +226,38 @@ export class Chat {
     //     // TODO remove buttons from chatHistory
     // }
 
+    makeUrl(message: string, span: JQuery<HTMLElement>) {
+        let url;
+        let urlHttp = message.indexOf('http://');
+
+        if (urlHttp < 0) {
+            let urlHttps = message.indexOf('https://');
+            if (urlHttps < 0) {
+                url = -1;
+            } else {
+                url = urlHttps;
+            }
+        } else {
+            url = urlHttp;
+        }
+
+        if (url > -1) {
+            let startUrl = message.substr(url);
+            let endSpace = startUrl.indexOf(' ');
+            let endUrl = (endSpace > -1 ? endSpace : message.length);
+            let allUrl = message.substr(url, endUrl);
+            let urlText = '<a href="' + allUrl + '" target="_blank">' + allUrl + '</a>';
+            span.html(span.html().replace(allUrl, urlText));
+
+            if (endUrl > -1 &&
+                (message.indexOf('http://', endUrl) > -1 || message.indexOf('https://', endUrl) > -1)) {
+                span = this.makeUrl(message.substr(endUrl+1), span);
+            }
+        }
+
+        return span;
+    }
+
     public appendMessage(message: ChatMessage) {
         // if (message.id <= this.last_message_id) return;
         // this.last_message_id = message.id;
@@ -248,7 +280,6 @@ export class Chat {
                         avatar_url = "/rediirector/images/avatars/user-icon.png";
                     }
                 }
-                // TODO icon load
                 break;
             case "customer":
                 type = "self";
@@ -260,38 +291,26 @@ export class Chat {
         }
         let time = new Date(message.stamp).toLocaleTimeString();
 
-        let str =
-                "<div id='cm-msg-" + message.id + "' class=\"chat-msg " + type + "\">" +
-                    "<span class=\"msg-avatar\">" +
-                        "<img src=\"" + avatar_url + "\">" +
-                    "<\/span>" +
-                    "<div class=\"cm-msg-text\">" +
-                        message.text +
-                        "<div class=\"cm-msg-time\">" +
-                            time +
-                        "<\/div>" +
-                    "<\/div>";
+        let container = $('<div></div>').appendTo( $('#chat-logs') ).attr("id", message.id).addClass("chat-msg").addClass(type);
+        let avatar_container = $('<span></span>').addClass("msg-avatar").appendTo(container);
+        $('<img></img>').attr("src", avatar_url).appendTo(avatar_container);
+
+        let content = $('<div></div>').addClass("cm-msg-text").html(message.text);
+        content = this.makeUrl(message.text, content);
+        content.appendTo(container);
+        $('<div></div>').addClass("cm-msg-time").text(time).appendTo(content);
 
         if (message.buttons) {
-            // btn-primary chat-btn
-            str +=  "<div class=\"cm-msg-button\">" +
-                        "<ul>" +
-                            message.buttons.map((button: {name: string, value: string}) =>
-                            "<li class=\"button\">" +
-                                "<span onclick=\"handleButtonClick(\'" + button.name + "\',\'" + button.value + "\', \'" + message.id + "\')\" class=\"chat-button\"\">" +
-                                    button.name +
-                                "<\/span>" +
-                            "<\/li>"
-                        ).join('') +
-                        "<\/ul>" +
-                    "<\/div>";
+            let buttons_container = $('<div></div>').addClass("cm-msg-button");
+            let buttons_list = $('<ul></ul>').appendTo(buttons_container);
+            message.buttons.map( (button: typeof message.buttons[0] ) => {
+                // btn-primary chat-btn
+                let wrapper = $('<li></li>').addClass("button");
+                $('<span></span>').addClass("chat-button").text(button.name).appendTo(wrapper);
+                wrapper.appendTo(buttons_list);
+            })
         }
-        str +=
-                "<\/div>";
 
-        $("#chat-logs").append()
-
-        $('#chat-logs').append(str);
         $("#cm-msg-"+message.id).hide().fadeIn(300);
         $("#chat-logs").stop().animate({ scrollTop: $("#chat-logs")[0].scrollHeight }, 700);
     }

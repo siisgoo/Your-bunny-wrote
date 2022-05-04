@@ -19,9 +19,6 @@ export class Controller {
             case 'toggleRememberMe':
                 this.model.toggleRememberMe();
                 break;
-            // case 'lastMessageInput':
-            //     Model.sendLastMessage();
-            // break;
             // case 'autoComplete':
             //     Model.autoComplete(args);
             // break;

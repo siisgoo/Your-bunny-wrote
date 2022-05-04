@@ -1,14 +1,8 @@
 import { ManagerSchema } from 'Schemas/Manager.js'
 import { ChatMessage } from 'Schemas/ChatMessage.js'
 import { cookie } from './Cookie.js'
-import { View } from './View.js'
 import { FileSchema } from 'Schemas/File.js'
-
-enum connState {
-    Connected,
-    Disconnected,
-    NotAvalible,
-}
+import { EventEmitter } from './EventEmitter.js'
 
 interface Settings {
     rememberMe: boolean;
@@ -19,43 +13,39 @@ interface User {
     settings: Settings;
 }
 
-// export type Commands = "ShowMessage" | "UpdateTitle"
+interface m_em {
+    init: void;
+    setLoading: void;
+    unsetLoading: void;
+    setStatus: string;
+    fileLoaded: string;
+    newMessage: ChatMessage;
+    clear: void;
+}
 
-export class Model {
-    private view?: View;
+export class Model extends EventEmitter<m_em> {
     private hash: string;
-    // @ts-ignore
-    private connectionState: connState;
     private user: User;
     private curManager?: ManagerSchema;
     // @ts-ignore
     private socket: WebSocket;
     private url: URL;
-    private subtitle: string;
     private lastManagerEvent: string;
-
-    private unhandledMessages: Array<ChatMessage>;
 
     private lastMessage?: ChatMessage;
 
     constructor(url: URL) {
+        super();
         this.lastManagerEvent = "";
-        this.subtitle = "";
-        this.unhandledMessages = new Array<ChatMessage>();
         this.hash = cookie.get("hash") ?? "";
-        this.connectionState = connState.Disconnected;
         this.user = {
             username: cookie.get("username") ?? "",
             settings: {
                 rememberMe: cookie.get("rememberMe") ? true : false
             }
         }
-        // @ts-ignore
-        // this.curManager = JSON.stringify(cookie.get("manager"));
-        // validate
 
         this.url = url;
-        console.log(url)
     }
 
     deconstructor() {
@@ -63,10 +53,6 @@ export class Model {
 
     async init() {
         this.connect();
-        if (this.curManager) {
-            this.notify("newManager");
-        }
-
         if (this.user.settings.rememberMe) {
             $("#chat-save-session").addClass("chat-settings-active");
         } else {
@@ -74,14 +60,13 @@ export class Model {
             $("#chat-save-session").addClass("chat-settings-diactive");
         }
 
-        this.notify('setSpiner');
+        this.emit("setLoading")
     }
 
     disconnect() {
         this.socket.onclose = () => {}
         this.socket.onerror = () => {}
         if (this.socket.readyState != WebSocket.CLOSED || this.socket.readyState != WebSocket.CONNECTING) {
-            console.log("Closing", this.user.settings.rememberMe)
             if (this.user.settings.rememberMe) {
                 this.socket.close(4001, "Reloading"); // TODO constants
             } else {
@@ -91,43 +76,37 @@ export class Model {
     }
 
     connect() {
-        console.log("Connecting:", this.url+"?hash="+this.hash);
         this.socket = new WebSocket(this.url+"?hash="+this.hash);
 
-        this.subtitle = "Connecting...";
-        this.notify("newSubTitle");
+        this.emit("setStatus", "Connecting...");
 
         this.socket.onopen = () => {
-            this.connectionState = connState.Connected;
-            this.subtitle = "Connected";
-            this.notify("newSubTitle");
+            this.emit("setStatus", "Connected");
         }
 
         this.socket.onclose = (e) => {
-            this.connectionState = connState.Disconnected;
-            console.log("Discon:", e);
             if (e.code !== 1006) {
-                this.subtitle = "Not avalible";
-                this.notify("newSubTitle");
+                this.emit("setStatus", "Not avalible");
             }
-            this.notify('setSpiner');
+            this.emit('setLoading');
             // reconnection in 5 sec
             setTimeout(() => this.connect(), 5000);
         }
 
         this.socket.onerror = (e) => {
-            console.log("Error:", e);
-            this.connectionState = connState.NotAvalible;
-            this.subtitle = "Not avalible";
-            this.notify("newSubTitle");
-            this.notify('setSpiner');
-            (async () => setTimeout(() => this.notify("disable"), 1000))();
+            this.emit("setStatus", "Service not avalible");
+            this.emit('setLoading');
+            console.log("Socket error", e);
+            // (async () => setTimeout(() => this.notify("disable"), 1000))();
         }
 
         this.socket.onmessage = (e: MessageEvent<{ event: string, payload: object }>) => {
             this.messageHandler(e);
         }
+    }
 
+    isConnected() {
+        return this.socket.readyState == WebSocket.OPEN;
     }
 
     getServerUrl() {
@@ -136,10 +115,6 @@ export class Model {
 
     getCurManager() {
         return this.curManager;
-    }
-
-    ok() {
-        return this.connectionState == connState.Connected;
     }
 
     settings() {
@@ -154,30 +129,12 @@ export class Model {
         return this.lastManagerEvent;
     }
 
-    subTitle() {
-        return this.subtitle;
-    }
-
     manager(): ManagerSchema | undefined {
         return this.curManager;
     }
 
-    pendingMessages() {
-        let messages = this.unhandledMessages.splice(0);
-        this.unhandledMessages.length = 0;
-        return messages;
-    }
-
     getLastMessage() {
         return this.lastMessage;
-    }
-
-    setView(view: View) {
-        this.view = view;
-    }
-
-    notify(cmd: string) {
-        this.view?.update(cmd);
     }
 
     getFile(id: string): { file: FileSchema, data: Buffer } | null {
@@ -222,16 +179,15 @@ export class Model {
 
     // TODO validate
     receiveMessage(message: ChatMessage) {
-        this.unhandledMessages.push(message);
         this.lastMessage = message;
-        this.notify('newMessage');
+        this.emit('newMessage', message);
     }
 
     doAction(action: string, params: any[]): boolean {
         params.length = 0;
         switch (action) {
             case "clear": {
-                this.notify("clear");
+                this.emit("clear");
                 return false;
             }
             default: {
@@ -241,10 +197,8 @@ export class Model {
     }
 
     resetChat() {
-        this.unhandledMessages.splice(0);
-        this.unhandledMessages.length = 0;
         this.lastMessage = undefined;
-        this.notify("clear");
+        this.emit("clear");
     }
 
     toggleRememberMe() {
@@ -254,54 +208,49 @@ export class Model {
 
     messageHandler(e: MessageEvent) {
         let data = JSON.parse(e.data);
-        console.log(data);
         switch (data.event) {
             case "created": {
-                this.notify('unsetSpiner');
+                this.emit("unsetLoading");
                 this.hash = data.payload.hash;
                 cookie.set("hash", this.hash, {})
                 break;
             }
             case "restored": {
                 this.resetChat();
-                this.notify('unsetSpiner');
+                this.emit('unsetLoading');
                 data.payload.history.map(( m: ChatMessage ) => {
                     this.receiveMessage(m);
                 })
-                // this.notify("newMessage");
 
                 if (data.payload.chat.managerId) {
                     this.curManager = data.payload.manager;
-                    this.subtitle = data.payload.manager.name;
-                    this.notify("newSubTitle")
+                    // forse reload
+                    this.requestFile(this.curManager!.avatar, this.curManager!.userId);
+                    this.emit("setStatus", data.payload.manager.name)
                 }
                 break;
             }
             case "message": {
                 this.receiveMessage(data.payload.message)
-                this.notify("newMessage");
                 break;
             }
-            case "managerEvent": {
-                this.lastManagerEvent = data.payload.event.name;
-                this.notify("newManagerEvent");
-                break;
-            }
+            // case "managerEvent": {
+            //     this.lastManagerEvent = data.payload.event.name;
+            //     // this.emit("newManagerEvent");
+            //     break;
+            // }
             case "accept": {
-                this.subtitle = data.payload.manager.name;
                 this.curManager = data.payload.manager;
-                this.requestFile(this.curManager!.avatar.file_id, this.curManager!.userId);
-                this.notify("newSubTitle")
+                this.requestFile(this.curManager!.avatar, this.curManager!.userId);
+                this.emit("setStatus", data.payload.manager.name)
                 break;
             }
             case "closed": {
-                this.subtitle = "Connected";
-                this.notify("newSubTitle");
+                this.emit("setStatus", "Connected");
                 break;
             }
             case "leaved": {
-                this.subtitle = "Connected";
-                this.notify("newSubTitle");
+                this.emit("setStatus", "Connected");
                 break;
             }
             case "ping": {
@@ -312,8 +261,8 @@ export class Model {
                 break;
             }
             case "file": {
-                this.notify("file");
                 localStorage.setItem(data.payload.config.id, JSON.stringify(data.payload));
+                this.emit("fileLoaded", data.payload.config.id);
                 break;
             }
             case "error": {
@@ -321,7 +270,7 @@ export class Model {
                 break;
             }
             default:
-                console.log("Unrekognie");
+                console.error("DEBUG: Unrekognized event in message: ", data);
         }
     }
 }

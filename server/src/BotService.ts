@@ -3,7 +3,6 @@ import { EventEmitter } from 'events'
 import { Database, Manager, Chat } from './database.js'
 import { ChatServer } from './ChatService.js'
 import { Config } from './Config.js'
-import { ChatMessage } from './Schemas/ChatMessage.js'
 
 interface Context extends tg.Context {
     manager: Manager
@@ -31,30 +30,33 @@ export class BotService extends EventEmitter {
 
         this.bot = new tg.Telegraf(Config().bot.token);
 
-        this.chatService.onChatManagerRequest = async (chat: Chat) => {
+        // send invites to all online and not already linked to chat manager
+        this.chatService.on('managerRequest', async (chat) => {
             if (chat.managerId) {
                 await this.bot.telegram.sendMessage(chat.managerId, "Customer " + chat.initiator + " return to chat");
             } else {
-                let online = await Database.managers.findMany({ online: true });
+                let online = await Database.managers.findMany({ online: true, linkedChat: null });
                 for await (let m of online) {
                     this.bot.telegram.sendMessage(m.userId, "Incoming chat invetation from " + chat.initiator, this.createEnterChatMarkup(chat.hash));
                 }
             }
-        }
+        })
 
-        this.chatService.onChatClosed = async (chat: Chat, waitReq: boolean) => {
+        this.chatService.on('chatClosed', async (args) => {
+            let { chat, waitReq } = args;
             if (chat.managerId) {
                 if (waitReq) {
                     this.bot.telegram.sendMessage(chat.managerId, "Client reloading page or something, you still can leave or close this chat");
                 } else {
                     this.bot.telegram.sendMessage(chat.managerId, "Client closed chat");
-                    chat.managerId = null;
-                    await chat.sync();
+                    await chat.unlinkManager();
+                    await (await Manager.findOne({ userId: chat.managerId }))!.unlinkChat();
                 }
             }
-        }
+        })
 
-        this.chatService.onChatMessage = async (chat: Chat, message: ChatMessage) => {
+        this.chatService.on('chatMessage', (args) => {
+            let { chat, message } = args;
             if (chat.managerId) {
                 // this.bot.telegram.sendMessage(chat.managerId, message.from.name + ":\n" + message.text);
                 this.bot.telegram.sendMessage(chat.managerId, chat.initiator + ":\n" + message.text);
@@ -72,7 +74,7 @@ export class BotService extends EventEmitter {
                 //     })
                 // }
             }
-        }
+        })
 
         // identification midleware
         this.bot.use(async (ctx, next) => {
@@ -112,7 +114,7 @@ export class BotService extends EventEmitter {
             await (new Manager({
                 userId: userId,
                 name: member.user.first_name + " " + member.user.last_name,
-                avatar: await Database.files.getDefaultAvatar()
+                avatar: (await Database.files.getDefaultAvatar()).file_id
             })).sync();
 
             this.bot.telegram.sendMessage(userId, "Your request have been accepted. Now you are can use this bot ... and youa are the member of ...");
@@ -124,29 +126,65 @@ export class BotService extends EventEmitter {
             this.bot.telegram.sendSticker(userId, this.stickers.evil);
         });
 
+        this.bot.command('status', ctx => {
+            ctx.reply("Your status: " + (ctx.manager.online ? "online" : "offline"))
+        })
+
+        this.bot.command('setname', async (ctx) => {
+            let name = String(ctx.message.text.slice('setname'.length+2)).trim();
+            if (name !== "") {
+                await ctx.manager.setName(name);
+                ctx.reply("Now your will called " + name);
+            } else {
+                ctx.reply('No string passed, try: "/setname The Emperor"');
+            }
+        })
+
+        this.bot.command('updateavatar', async (ctx) => {
+            let photos = await ctx.telegram.getUserProfilePhotos(ctx.from.id, 0, 1);
+            let file = await ctx.telegram.getFile(photos.photos[0][0].file_id);
+            let url = await ctx.telegram.getFileLink(file.file_id);
+            let l_file = await Database.files.saveFile(url.href, "avatars");
+            if (l_file) {
+                await ctx.manager.setAvatar(l_file.file_id);
+            } else {
+                ctx.reply("Loading error. Try another time");
+            }
+        })
+
         this.bot.command('goonline', async (ctx) => {
-            Database.managers.updateOne({ userId: ctx.from.id }, { online: true });
+            await ctx.manager.setOnline(true);
             ctx.reply("You are online now");
             ctx.replyWithSticker(this.stickers.happy)
 
             let pending = await Database.chats.findMany((ch) => { return !ch.managerId && ch.online && ch.waitingManager });
             if (pending.length > 0) {
-                ctx.reply("During your absence " + pending.length + " peoplec need your help");
+                await ctx.reply("During your absence " + pending.length + " peoplec need your help");
                 for (let chat of pending) {
                     ctx.reply("Incoming invetation from " + chat.initiator, this.createEnterChatMarkup(chat.hash));
                 }
             }
         });
 
-        this.bot.command('gooffline', (ctx) => {
-            Database.managers.updateOne({ userId: ctx.from.id }, { online: false });
+        this.bot.command('gooffline', async (ctx) => {
+            await ctx.manager.setOnline(false);
             ctx.reply("You are offline now");
             ctx.replyWithSticker(this.stickers.sad);
 
             // TODO delete queries from ctx chat
         });
 
+        this.bot.command('menu', async ctx => {
+            ctx.reply("In dev");
+            if (ctx.manager.isAdmin) {
+
+            } else {
+
+            }
+        });
+
         this.bot.command('chats', ctx => {
+            ctx.reply("In dev");
             if (ctx.manager.isAdmin) {
 
             } else {
@@ -158,8 +196,7 @@ export class BotService extends EventEmitter {
             let chatHash = ctx.message.text.slice('chat_enter'.length);
             // avoiding ts warning
             if (this.chatService.enterChat(chatHash, ctx.manager)) {
-                ctx.manager.linkToChat(chatHash)
-                await ctx.manager.sync();
+                await ctx.manager.linkToChat(chatHash)
                 ctx.reply("Now you are in chat with customer");
             } else {
                 ctx.reply("Selected chat expired");
@@ -170,8 +207,7 @@ export class BotService extends EventEmitter {
             let chatHash = ctx.match.input.slice('chat_enter'.length);
             // avoiding ts warning
             if (this.chatService.enterChat(chatHash, ctx.manager)) {
-                ctx.manager.linkToChat(chatHash);
-                await ctx.manager.sync();
+                await ctx.manager.linkToChat(chatHash);
                 ctx.reply("Now you are in chat with customer").then(() => next());
             } else {
                 ctx.reply("Selected chat expired").then(() => next());
@@ -180,9 +216,8 @@ export class BotService extends EventEmitter {
 
         this.bot.command('close', async ctx => {
             if (ctx.manager.linkedChat) {
-                this.chatService.closeChat(ctx.manager.linkedChat);
-                ctx.manager.unlinkChat();
-                await ctx.manager.sync();
+                await this.chatService.closeChat(ctx.manager.linkedChat);
+                await ctx.manager.unlinkChat();
                 ctx.reply("Chat successfuly closed");
             } else {
                 ctx.reply("Close chat command will be avalible only after entering any chat");
@@ -191,9 +226,8 @@ export class BotService extends EventEmitter {
 
         this.bot.command('leave', async ctx => {
             if (ctx.manager.linkedChat) {
-                this.chatService.leaveChat(ctx.manager.linkedChat);
-                ctx.manager.unlinkChat();
-                await ctx.manager.sync();
+                await this.chatService.leaveChat(ctx.manager.linkedChat);
+                await ctx.manager.unlinkChat();
                 ctx.reply("Chat successfuly leaved, " + (await Chat.findOne({ managerId: ctx.manager.userId }))!.initiator + " will wait for another manager");
             } else {
                 ctx.reply("Leave chat command will be avalible only after entering any chat");
@@ -203,15 +237,14 @@ export class BotService extends EventEmitter {
         this.bot.on('text', async ctx => {
             if (ctx.manager.linkedChat) {
                 this.chatService.answerTo(ctx.manager.linkedChat, {
-                    id: 0, // deligate to chatService
+                    id: 0, // deligate to chatService TODO use OMIT to remove this field
                     stamp: ctx.message.date,
                     from: {
                         name: ctx.manager.name,
                         type: 'manager',
                         userid: ctx.manager.userId
                     },
-                    text: ctx.message.text,
-                    buttons: []
+                    text: ctx.message.text
                 });
             } else {
                 let msg = await ctx.reply("You are not connected to chat, those messages will be deleted");
@@ -236,11 +269,11 @@ export class BotService extends EventEmitter {
                         userId: Config().bot.admin_id,
                         linkedChat: null,
                         online: false,
-                        avatar: await Database.files.getDefaultAvatar()
+                        avatar: (await Database.files.getDefaultAvatar()).file_id
                     })
                 }
             })
-            .then(() => {
+            .then(async () => {
                 this.bot.launch()
                     .then(async () => {
                         this.running = true;
@@ -250,8 +283,12 @@ export class BotService extends EventEmitter {
                         }
                         console.log("Telegram-bot service started");
                     })
-                    .catch(err => { throw err; });
-                this.chatService.start();
+                    .catch(err => { throw err });
+                this.chatService.start().catch(err => { throw err });
+            })
+            .catch((e) => {
+                console.error("Cannot initialize telegram chat bot service: ", e);
+                throw e;
             })
     }
 
@@ -268,18 +305,12 @@ export class BotService extends EventEmitter {
         await Database.managers.updateMany({ online: true }, { online: false, linkedChat: null });
         await Database.managers.save();
         await this.chatService.stop();
-        this.onStop();
+        await this.onStop();
     }
 
     private createEnterChatMarkup(hash: string) {
         return tg.Markup.inlineKeyboard([ tg.Markup.button.callback("Accept", "chat_enter" + hash),
                                           tg.Markup.button.callback("Decline", "chat_decline " + hash) ])
     }
-
-    // private createMainKeyboard() {
-    //     return tg.Markup.keyboard([
-    //         tg.Markup.button.callback("Status", "menu_status")
-    //     ]);
-    // }
 }
 
