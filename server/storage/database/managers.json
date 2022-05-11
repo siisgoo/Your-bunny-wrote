@@ -1,10 +1,10 @@
 [
 	{
 		"isAdmin": true,
-		"name": "The Emperor",
+		"name": "Admin",
 		"userId": 525394327,
 		"linkedChat": null,
 		"online": false,
-		"avatar": 221093613657265
+		"avatar": 0
 	}
 ]

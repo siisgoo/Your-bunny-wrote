@@ -93,10 +93,9 @@ export class Model extends EventEmitter<m_em> {
             setTimeout(() => this.connect(), 5000);
         }
 
-        this.socket.onerror = (e) => {
+        this.socket.onerror = () => {
             this.emit("setStatus", "Service not avalible");
             this.emit('setLoading');
-            console.log("Socket error", e);
             // (async () => setTimeout(() => this.notify("disable"), 1000))();
         }
 

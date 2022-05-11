@@ -65,7 +65,7 @@ export class Chat {
 
     public init() {
         // show chat
-        this.box.animate({opacity: 1}, 1000);
+        this.hide(() => this.box.animate({opacity: 1}, 1000));
     }
 
     public setSpiner() {
@@ -93,7 +93,7 @@ export class Chat {
         }
     }
 
-    public hide() {
+    public hide(then = () => {}) {
         this.hidden = true;
         return $("#chat-box")
             .stop()
@@ -102,7 +102,7 @@ export class Chat {
                 top: this.initialPosition.top,
                 height: "toggle",
                 width: "toggle"
-            }, 1000, "easeOutQuad");
+            }, 1000, "easeOutQuad", then);
     }
 
     public show() {
@@ -342,7 +342,16 @@ export class ChatToggle {
     init() {
         // @ts-ignore
         this.el.css("left", -this.el.width());
-        this.adjust(1000);
+        setTimeout(() => this.adjust(500), 10);
+        setTimeout(() => this.notifyBounce(), 515);
+    }
+
+    notifyBounce() {
+        // @ts-ignore
+        // return this.el.effect("bounce", {times:10, direction: "left", distance: 10}, 1000);
+        return this.el.animate({ left: this.normalLeft + 10 }, 1000, "easeInBounce", () => {
+            this.el.animate({ left: this.normalLeft }, 500, "easeOutBounce");
+        });
     }
 
     show() {

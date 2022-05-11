@@ -4,11 +4,5 @@
 		"file_mime": "image/png",
 		"path": "storage/public/files/static/manager-icon.png",
 		"group": "static"
-	},
-	{
-		"file_id": 221093613657265,
-		"file_mime": "image/jpeg",
-		"path": "storage/public/files/58556a888bc2b15ddfa6607dd37b3a.jpeg",
-		"group": "avatars"
 	}
 ]

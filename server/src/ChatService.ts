@@ -274,6 +274,7 @@ export class ChatServer extends EventEmitter<cs_em> {
             throw "LT error:" + e;
         });
 
+        console.log(this.tunnel)
         if (this.tunnel.url || this.tunnel.url != "") {
             console.log("Chat server running on localhost:" + Config().server.port);
             console.log("Chat serivce tunneling to", this.tunnel.url)
@@ -288,9 +289,7 @@ export class ChatServer extends EventEmitter<cs_em> {
             this.connections.delete(k)
         }
         this.listener.close();
-        if (this.tunnel) {
-            this.tunnel.close();
-        }
+        this.tunnel!.close();
         await Database.chats.updateMany(() => true,
             { managerId: null, waitingManager: false, stage: ChatStage.startup });
         await Database.chats.save();
