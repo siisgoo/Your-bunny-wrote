@@ -88,27 +88,28 @@ export class BotService extends EventEmitter {
                 ctx.replyWithMarkdown("Welcome to rediirector bot. To start using bot you need to be aproved by bot adimnistraton.\n" +
                                       "Full documentation represents [here](https://github.com/siisgoo/rediirector/blob/main/README.md)");
                 ctx.reply("Click on button for send approve request",
-                          tg.Markup.inlineKeyboard([ [ { text: "Send", callback_data: "approve_request" }, ] ]));
+                          tg.Markup.inlineKeyboard([ [ { text: "Send", callback_data: "approve_request " + ctx.from!.id  }, ] ]));
             }
         })
 
-        this.bot.start(ctx => {
-            ctx.reply("Yo");
+        this.bot.start(async ctx => {
+            await ctx.reply("Yo");
             ctx.replyWithSticker(this.stickers.welcoming);
         })
 
-        this.bot.action('approve_request', (ctx) => {
+        this.bot.action(/approve_request*/, (ctx) => {
+            let id = ctx.match.input.slice('chat_enter'.length);
             let keyboard = tg.Markup.inlineKeyboard([ [
                 {   text: "Approve",
-                    callback_data: "approve_manager " + ctx.from!.id },
+                    callback_data: "approve_manager " + id },
                 {   text: "Reject",
-                    callback_data: "reject_manager " + ctx.from!.id }
+                    callback_data: "reject_manager " + id }
             ] ])
             ctx.telegram.sendMessage(Config().bot.admin_id, "Autorization request from @" + ctx.from!.username,
                                      keyboard);
         })
 
-        this.bot.action('approve_manager', async (ctx) => {
+        this.bot.action(/approve_manager*/, async (ctx) => {
             let userId = Number(ctx.match.input.slice('approve_manager'.length));
             let member = await this.bot.telegram.getChatMember(userId, userId);
             await (new Manager({
@@ -120,9 +121,9 @@ export class BotService extends EventEmitter {
             this.bot.telegram.sendMessage(userId, "Your request have been accepted. Now you are can use this bot ... and youa are the member of ...");
         });
 
-        this.bot.action('reject_manager', (ctx) => {
-            let userId = Number(ctx.match.input.slice('approve_manager'.length));
-            this.bot.telegram.sendMessage(userId, "Your request have been rejected");
+        this.bot.action(/reject_manager*/, async (ctx) => {
+            let userId = Number(ctx.match.input.slice('reject_manager'.length));
+            await this.bot.telegram.sendMessage(userId, "Your request have been rejected");
             this.bot.telegram.sendSticker(userId, this.stickers.evil);
         });
 
