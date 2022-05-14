@@ -1,5 +1,5 @@
-import { min, pattern, Infer, assert, boolean, object, number, string } from 'superstruct';
-import { readFileSync } from 'fs';
+import { min, pattern, Infer, assert, boolean, object, number, string } from 'superstruct'
+import { readFileSync } from 'fs'
 
 const ConfigSign = object({
     bot: object({
@@ -28,7 +28,12 @@ const ConfigSign = object({
 type ConfigType = Infer<typeof ConfigSign>;
 
 export function Config(): ConfigType {
-    const config = JSON.parse(readFileSync("./config.json").toString());
+    let config;
+    try {
+        config = JSON.parse(readFileSync("./config.json").toString());
+    } catch(e) {
+        throw new Error("Config parse error: " + e);
+    }
 
     assert(config, ConfigSign);
 

@@ -42,7 +42,7 @@ const FileEntryValidator = (document: any) => assert(document, FileSign)
 
 const managers = new ADatabase<ManagerSchema>({
     path: Config().server.database.path + "/managers.json",
-    pretty: true,
+    pretty: false,
     autoload: true,
     immutable: true,
     onlyInMemory: false,
@@ -51,7 +51,7 @@ const managers = new ADatabase<ManagerSchema>({
 
 const chats = new ADatabase<ChatSchema>({
     path: Config().server.database.path + "/chats.json",
-    pretty: true,
+    pretty: false,
     autoload: true,
     immutable: true,
     onlyInMemory: false,
@@ -60,7 +60,7 @@ const chats = new ADatabase<ChatSchema>({
 
 const history = new ADatabase<MessageSchema>({
     path: Config().server.database.path + "/history.json",
-    pretty: true,
+    pretty: false,
     autoload: true,
     immutable: true,
     onlyInMemory: false,
@@ -69,7 +69,7 @@ const history = new ADatabase<MessageSchema>({
 
 const files_db = new ADatabase<FileSchema>({
     path: Config().server.database.path + "/files.json",
-    pretty: true,
+    pretty: false,
     autoload: true,
     immutable: true,
     onlyInMemory: false,

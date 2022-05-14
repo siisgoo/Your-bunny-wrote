@@ -7,13 +7,14 @@
     "server": {
         "database": {
             "saveChatHistory": true,
-            "path": "./storage/database"
+            "path": "storage/database"
         },
         "fileStorage": {
-            "path": "./storage/files"
+            "public_path": "storage/public",
+            "path": "storage/public/files"
         },
         "port": 7900,
-        "subdomain": "rediirector",
-        "domain": ""
+        "subdomain": "chat",
+        "domain": "somedomain"
     }
 }

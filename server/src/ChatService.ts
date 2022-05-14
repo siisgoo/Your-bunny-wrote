@@ -9,28 +9,6 @@ import { ChatMessage } from './Schemas/ChatMessage'
 import localtunnel from 'localtunnel'
 
 import { EventMap, EventEmitter } from './EventEmmiter.js'
-// import { req_em, res_em } from './Events.js'
-
-// export class ChatSocket extends EventEmitter<res_em> {
-//     constructor(private socket: WebSocket) {
-//         super();
-//         this.socket.onmessage = (e) => {
-//             let data = JSON.parse(e.data);
-//             if (data.target in req_em) {
-
-//             }
-//         }
-//     }
-
-//     send<K extends EventKey<res_em>>(eventName: K, ...params: res_em[K][]) {
-//         this.socket.send(JSON.stringify({
-//             event: eventName,
-//             payload: {
-//                 ...params
-//             }
-//         }))
-//     }
-// }
 
 let Bot = (() => {
     const botName = "Tech-bot";
@@ -63,7 +41,7 @@ let Bot = (() => {
         "historyTurnSave":   { text: "Сообщения будут сохраняться в историю" },
         "internalError":     { text: "Ой-ой. Что то пошло не так, пожалуйста, презагрузите страницу." },
         "serviceNotAvalible":{ text: "Сервис временно не доступен." },
-        "whatBotCan":        { text: 'Я умею:</br>Вызывать оператора</br>...' },
+        "whatBotCan":        { text: 'Я умею:Отвечать на несложные вопросы</br>Вызывать оператора</br>' },
 
         "unrekognized":      { text: "Не могу найти ответ" },
 
@@ -274,12 +252,11 @@ export class ChatServer extends EventEmitter<cs_em> {
             throw "LT error:" + e;
         });
 
-        console.log(this.tunnel)
-        if (this.tunnel.url || this.tunnel.url != "") {
+        if (this.tunnel.url && this.tunnel.url == "https://" + Config().server.subdomain + ".loca.lt") {
             console.log("Chat server running on localhost:" + Config().server.port);
             console.log("Chat serivce tunneling to", this.tunnel.url)
         } else {
-            throw "Cannot initialize chat service. localtunnel error"
+            throw new Error("subdomain: " + Config().server.subdomain + " is busy")
         }
     }
 
@@ -290,8 +267,13 @@ export class ChatServer extends EventEmitter<cs_em> {
         }
         this.listener.close();
         this.tunnel!.close();
-        await Database.chats.updateMany(() => true,
-            { managerId: null, waitingManager: false, stage: ChatStage.startup });
+        if (!Config().server.database.saveChatHistory) {
+            await Database.history.drop();
+            await Database.chats.drop();
+        } else {
+            await Database.chats.updateMany((c) => c.managerId != null || c.waitingManager == true,
+                { managerId: null, waitingManager: false, stage: ChatStage.smartHandling });
+        }
         await Database.chats.save();
         await Database.history.save();
     }

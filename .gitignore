@@ -2,6 +2,8 @@ rediirector.db-journal
 rediirector.db
 config.json
 bin/
+dist/
+storage/
 *.js
 *.js.min
 avatars/*
