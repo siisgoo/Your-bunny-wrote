@@ -9,17 +9,27 @@ interface Context extends tg.Context {
 }
 
 type TextContext = tg.NarrowedContext<Context, tg.Types.MountMap['text']>;
+type Command = {
+    (this: BotService, ctx: TextContext): Promise<void>;
+    description: string;
+    args: string;
+}
 const commands = (()=> {
-    async function start(this: BotService, ctx: TextContext) {
+    let start = <Command>async function(this: BotService, ctx: TextContext) {
         ctx.reply("Yo, how you are?");
         // ctx.replyWithSticker(this.stickers.welcoming);
     }
 
-    async function help(this: BotService, ctx: TextContext) {
-        ctx.reply("In dev");
+    let help = <Command>async function(this: BotService, ctx: TextContext) {
+        let msg: string = "";
+        Object.values(commands).forEach((cmd) => {
+            // @ts-ignore
+            msg += "/" + cmd.name + " - " + cmd.description + ". Arg: " + cmd.args + "\n";
+        })
+        ctx.reply(msg);
     }
 
-    async function chatenter(this: BotService, ctx: TextContext) {
+    let chat_enter = <Command>async function(this: BotService, ctx: TextContext) {
         let chatHash = ctx.message.text.slice('chat_enter'.length);
         // avoiding ts warning
         if (this.chatService.enterChat(chatHash, ctx.manager)) {
@@ -30,7 +40,7 @@ const commands = (()=> {
         }
     }
 
-    async function close(this: BotService, ctx: TextContext) {
+    let close = <Command>async function(this: BotService, ctx: TextContext) {
         if (ctx.manager.linkedChat) {
             await this.chatService.closeChat(ctx.manager.linkedChat);
             await ctx.manager.unlinkChat();
@@ -40,7 +50,7 @@ const commands = (()=> {
         }
     }
 
-    async function leave(this: BotService, ctx: TextContext) {
+    let leave = <Command>async function(this: BotService, ctx: TextContext) {
         if (ctx.manager.linkedChat) {
             ctx.reply("Chat successfuly leaved, " + (await Chat.findOne({ managerId: ctx.manager.userId }))!.initiator + " will wait for another manager");
             await this.chatService.leaveChat(ctx.manager.linkedChat);
@@ -50,11 +60,11 @@ const commands = (()=> {
         }
     }
 
-    async function history(this: BotService, ctx: TextContext) {
+    let history = <Command>async function(this: BotService, ctx: TextContext) {
         ctx.reply("In dev");
     }
 
-    async function setname(this: BotService, ctx: TextContext) {
+    let setname = <Command>async function(this: BotService, ctx: TextContext) {
         let name = "";
         if (ctx.message && ctx.message.text) {
             name = String(ctx.message.text.slice('setname'.length+2)).trim();
@@ -67,10 +77,10 @@ const commands = (()=> {
         }
     }
 
-    async function updateavatar(this: BotService, ctx: TextContext) {
+    let updateavatar = <Command>async function(this: BotService, ctx: TextContext) {
         let photos = await ctx.telegram.getUserProfilePhotos(ctx.from.id, 0, 1);
-        let file = await ctx.telegram.getFile(photos.photos[0][0].file_id);
-        let url = await ctx.telegram.getFileLink(file.file_id);
+        let file   = await ctx.telegram.getFile(photos.photos[0][0].file_id);
+        let url    = await ctx.telegram.getFileLink(file.file_id);
         let l_file = await Database.files.saveFile(url.href, "avatars");
         if (l_file) {
             await ctx.manager.setAvatar(l_file.file_id);
@@ -79,11 +89,11 @@ const commands = (()=> {
         }
     }
 
-    async function chats(this: BotService, ctx: TextContext) {
+    let chats = <Command>async function(this: BotService, ctx: TextContext) {
         ctx.reply("In dev");
     }
 
-    async function menu(this: BotService, ctx: TextContext) {
+    let menu = <Command>async function(this: BotService, ctx: TextContext) {
         ctx.reply("In dev");
         if (ctx.manager.isAdmin) {
 
@@ -92,7 +102,7 @@ const commands = (()=> {
         }
     }
 
-    async function goonline(this: BotService, ctx: TextContext) {
+    let goonline = <Command>async function(this: BotService, ctx: TextContext) {
         if (ctx.manager.linkedChat) {
             ctx.reply("You cannot change status while you are in chat");
         } else {
@@ -110,7 +120,7 @@ const commands = (()=> {
         }
     }
 
-    async function gooffline(this: BotService, ctx: TextContext) {
+    let gooffline = <Command>async function(this: BotService, ctx: TextContext) {
         if (ctx.manager.linkedChat) {
             ctx.reply("You cannot change status while you are in chat");
         } else {
@@ -120,10 +130,49 @@ const commands = (()=> {
         }
     }
 
-    async function status(this: BotService, ctx: TextContext) {
+    let status = <Command>async function(this: BotService, ctx: TextContext) {
         let chatLinkInfo: string = (ctx.manager.linkedChat ? " and you in chat" : "");
         ctx.reply("Your status: " + (ctx.manager.online ? "online" : "offline") + chatLinkInfo)
     }
+
+    status.description = "get current status";
+    status.args = "no";
+
+    goonline.description = "change status to online";
+    goonline.args = "no";
+
+    gooffline.description = "change status to offline";
+    gooffline.args = "no";
+
+    menu.description = "show main inline menu";
+    menu.args = "no";
+
+    chats.description = "show chats inline menu";
+    chats.args = "no";
+
+    updateavatar.description = "update avatar to current profile avatar";
+    updateavatar.args = "no";
+
+    setname.description = "change displaing name to new";
+    setname.args = "string";
+
+    history.description = "show current chat history";
+    history.args = "no";
+
+    leave.description = "leave current chat";
+    leave.args = "no";
+
+    close.description = "close current chat";
+    close.args = "no";
+
+    chat_enter.description = "enter to chat";
+    chat_enter.args = "chat UUID";
+
+    start.description = "start chat with bot";
+    start.args = "no";
+
+    help.description = "show help message";
+    help.args = "no";
 
     return {
         status,
@@ -136,7 +185,7 @@ const commands = (()=> {
         history,
         leave,
         close,
-        chatenter,
+        chat_enter,
         start,
         help,
     }
@@ -147,6 +196,7 @@ const cb_data = {
     approveManager: 'approve_manager',
     rejectManager: 'reject_manager',
     chatEnter: 'chat_enter',
+    chatDecline: 'chat_decline',
 };
 
 type CqContext = tg.NarrowedContext<Context & { match: RegExpExecArray; }, tg.Types.MountMap['callback_query']>;
@@ -201,7 +251,7 @@ let actions = (() => {
         if (ctx.manager.linkedChat) {
             this.chatService.answerTo(ctx.manager.linkedChat, {
                 id: 0, // deligate to chatService TODO use OMIT to remove this field
-                stamp: ctx.message.date,
+                stamp: new Date(ctx.message.date * 1000).getTime(),
                 from: {
                     name: ctx.manager.name,
                     type: 'manager',
@@ -309,24 +359,16 @@ export class BotService extends EventEmitter {
             }
         })
 
-        this.bot.start(commands.start)
-        this.bot.command('status',       (ctx) => commands.status.call(this, ctx));
-        this.bot.command('setname',      (ctx) => commands.setname.call(this, ctx));
-        this.bot.command('updateavatar', (ctx) => commands.updateavatar.call(this, ctx));
-        this.bot.command('goonline',     (ctx) => commands.goonline.call(this, ctx));
-        this.bot.command('gooffline',    (ctx) => commands.gooffline.call(this, ctx));
-        this.bot.command('menu',         (ctx) => commands.menu.call(this, ctx));
-        this.bot.command('chats',        (ctx) => commands.chats.call(this, ctx));
-        this.bot.command('chat_enter',   (ctx) => commands.chatenter.call(this, ctx));
-        this.bot.command('close',        (ctx) => commands.close.call(this, ctx));
-        this.bot.command('leave',        (ctx) => commands.leave.call(this, ctx));
+        Object.values(commands).forEach(cmd =>
+            this.bot.command(cmd.name, (ctx) => cmd.call(this,ctx))
+        )
 
         this.bot.action(RegExp(cb_data.approveRequest + "*"), (ctx, next) => actions.approverequest.call(this, ctx, next));
-        this.bot.action(/approve_manager*/,                   (ctx, next) => actions.approvemanager.call(this, ctx, next));
-        this.bot.action(/reject_manager*/,                    (ctx, next) => actions.rejectmanager.call(this, ctx, next));
+        this.bot.action(RegExp(cb_data.approveManager + "*"), (ctx, next) => actions.approvemanager.call(this, ctx, next));
+        this.bot.action(RegExp(cb_data.rejectManager + "*"),  (ctx, next) => actions.rejectmanager.call(this, ctx, next));
         this.bot.action(RegExp(cb_data.chatEnter + "*"),      (ctx, next) => actions.chatenter.call(this, ctx, next));
 
-        // Its muts be declared after ALL commands
+        // Its muts be declared after ALL commands!
         this.bot.on('text', actions.text.bind(this));
     }
 
@@ -334,35 +376,37 @@ export class BotService extends EventEmitter {
     }
 
     async start() {
-        Database.managers.findOne({ userId: Config().bot.admin_id })
-            .then(async e => {
-                if (!e) {
-                    Database.managers.insertOne({
-                        isAdmin: true,
-                        name: "Admin",
-                        userId: Config().bot.admin_id,
-                        linkedChat: null,
-                        online: false,
-                        avatar: (await Database.files.getDefaultAvatar()).file_id
-                    })
+        if (this.running) {
+            return;
+        }
+        try {
+            let adminExisted = true;
+            let admin = await Database.managers.findOne({ userId: Config().bot.admin_id })
+            if (!admin) {
+                adminExisted = false;
+                Database.managers.insertOne({
+                    isAdmin: true,
+                    name: "Admin",
+                    userId: Config().bot.admin_id,
+                    linkedChat: null,
+                    online: false,
+                    avatar: (await Database.files.getDefaultAvatar()).file_id
+                })
+            }
+            await this.bot.launch();
+            this.running = true;
+            if (adminExisted) {
+                for (let mngr of await Manager.findMany({})) {
+                    this.bot.telegram.sendMessage(mngr.userId, "Service now online");
+                    // this.bot.telegram.sendSticker(mngr.userId, this.stickers.happy);
                 }
-            })
-            .then(async () => {
-                this.bot.launch()
-                    .then(async () => {
-                        this.running = true;
-                        for (let mngr of await Manager.findMany({  })) {
-                            this.bot.telegram.sendMessage(mngr.userId, "Service now online");
-                            // this.bot.telegram.sendSticker(mngr.userId, this.stickers.happy);
-                        }
-                        console.log("Telegram-bot service started");
-                    })
-                    .catch(err => { throw err });
-                this.chatService.start().catch(err => { throw err });
-            })
-            .catch((e) => {
-                throw e;
-            })
+            }
+            console.log("Telegram-bot service started");
+
+            await this.chatService.start();
+        } catch(e) {
+            throw e;
+        }
     }
 
     async stop() {
@@ -382,7 +426,7 @@ export class BotService extends EventEmitter {
     }
 
     createEnterChatMarkup(hash: string) {
-        return tg.Markup.inlineKeyboard([ tg.Markup.button.callback("Accept", "chat_enter" + hash),
-                                          tg.Markup.button.callback("Decline", "chat_decline " + hash) ])
+        return tg.Markup.inlineKeyboard([ tg.Markup.button.callback("Accept", cb_data.chatEnter + " " + hash),
+                                          tg.Markup.button.callback("Decline", cb_data.chatDecline + " " + hash) ])
     }
 }

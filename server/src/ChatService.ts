@@ -1,6 +1,7 @@
 import * as fs from 'fs'
 import * as http from 'http'
 import * as ws from 'ws'
+import fuzzy from 'fuzzy'
 import { Database, Chat, Manager } from './database.js'
 import { ChatStage } from './Schemas/Chat.js'
 import { ManagerSchema } from './Schemas/Manager'
@@ -18,7 +19,11 @@ let Bot = (() => {
 
     type messageType = "startup" |
         "enterName" |
+        "whoIm" |
         "returnToManager" |
+        "askForCallManager" |
+        "callManagerByCommand" |
+        "howCanIBeHelpfull" |
         "waitForManager" |
         "chatClosed" |
         'managerLeaved' |
@@ -28,20 +33,26 @@ let Bot = (() => {
         "serviceNotAvalible" |
         "whatBotCan" |
         "unrekognized" |
-        "botCommands"
+        "botCommands" |
+        "faq"
 
     const messages: Record<messageType, botMsgPreset> = {
         "startup":           { text: 'Я - ' + botName },
+        "whoIm":             { text: "Я - " + botName },
         "enterName":         { text: "Как к вам обращаться?" },
+        "faq":               { text: "" },
         "returnToManager":   { text: "Тут я бессилен, вызываю оператора." },
+        "callManagerByCommand": { text: "Вызываю оператора." },
+        "askForCallManager": { text: "Не могу найти ответ. Нужна помощь оператора?" },
         "waitForManager":    { text: "Пожалуйста, подождите, вам скоро ответят." },
+        "howCanIBeHelpfull": { text: "Чем вам буду полезен?" },
         "chatClosed":        { text: "Чат закрыт, надеюсь мы помогли вам." },
-        'managerLeaved':     { text: "Менеджер вышел из чата, ищем вам другого." },
+        'managerLeaved':     { text: "Оператор вышел из чата, ищем вам другого." },
         "historyTurnDelete": { text: "Сообщения больше не будут сохраняться в историю" },
         "historyTurnSave":   { text: "Сообщения будут сохраняться в историю" },
         "internalError":     { text: "Ой-ой. Что то пошло не так, пожалуйста, презагрузите страницу." },
         "serviceNotAvalible":{ text: "Сервис временно не доступен." },
-        "whatBotCan":        { text: 'Я умею:Отвечать на несложные вопросы</br>Вызывать оператора</br>' },
+        "whatBotCan":        { text: 'Я умею:</br>Отвечать на несложные вопросы</br>Вызывать оператора' },
 
         "unrekognized":      { text: "Не могу найти ответ" },
 
@@ -54,7 +65,7 @@ let Bot = (() => {
         },
     }
 
-    function createMessage(type: messageType, id: number): ChatMessage {
+    function createMessage(type: messageType, id: number, ...arg: string[]): ChatMessage {
         let base: ChatMessage = {
             id: id,
             stamp: new Date().getTime(),
@@ -68,6 +79,25 @@ let Bot = (() => {
         }
 
         let message: botMsgPreset = messages[type];
+
+        // arg MUST contain string array
+        if (type == "faq") {
+            if (arg.length == 1) {
+                message.text = arg[0];
+            } else {
+                message.text = "Вы хотели узнать что то из этого списка?</br><ul>"
+                while (arg.length) {
+                    message.text += "<li>" + arg[0] + "</li>";
+                    arg.splice(0, 1);
+                }
+                message.text += "</ul>Если да - введите запрос более конкретно"
+            }
+        } else {
+            while (arg && arg.length) {
+                message.text.replace("%%", arg[0]);
+                arg.splice(0, 1);
+            }
+        }
 
         return {
             ...base,
@@ -86,7 +116,7 @@ class ChatConnection {
     public onDisconnect: (code: number, reason: Buffer) => void = () => {}
     public onManagerRequest: () => void                         = () => {}
     public chat: Chat;
-    // private chat: Chat;
+    public preCallSeq: boolean = false;
 
     constructor(private socket: ws.WebSocket, chat: Chat) {
         this.chat = chat;
@@ -256,7 +286,7 @@ export class ChatServer extends EventEmitter<cs_em> {
             console.log("Chat server running on localhost:" + Config().server.port);
             console.log("Chat serivce tunneling to", this.tunnel.url)
         } else {
-            throw new Error("subdomain: " + Config().server.subdomain + " is busy")
+            throw "subdomain: " + Config().server.subdomain + " is busy"
         }
     }
 
@@ -385,19 +415,7 @@ export class ChatServer extends EventEmitter<cs_em> {
         }
     }
 
-    // type messageType = "startup" |
-    //     "enterName" |
-    //     "returnToManager" |
-    //     "waitForManager" |
-    //     "chatClosed" |
-    //     'managerLeaved' |
-    //     "historyTurnDelete" |
-    //     "historyTurnSave" |
-    //     "internalError" |
-    //     "serviceNotAvalible" |
-    //     "whatBotCan" |
-    //     "unrekognized" |
-    //     "botCommands"
+    // TODO make it SOLID
     async handleMessage(conn: ChatConnection, msg: ChatMessage) {
         if (conn.chat.waitingManager) {
             conn.answer(Bot.createMessage("waitForManager", msg.id+1))
@@ -419,10 +437,70 @@ export class ChatServer extends EventEmitter<cs_em> {
                     this.emit("chatMessage", { chat: conn.chat, message: msg});
                     break;
                 case ChatStage.smartHandling: // faq answer ... other bot operations
-                    if (true) { // call manager
-                        conn.answer(Bot.createMessage("returnToManager", (await conn.chat.lastMessageId()) + 1))
+                    let reqManager = async () => {
                         await conn.chat.setWaitingStatus(true);
                         this.emit('managerRequest', conn.chat);
+                    }
+                    let fuzzyMatchScore = (s: Map<string, { input: string, minScore: number }>): boolean => {
+                        let ret = false;
+                        s.forEach((e, key) => {
+                            const match = fuzzy.match(key, e.input, { caseSensitive: false });
+                            if (match && match.score > e.minScore) {
+                                ret = true;
+                                // break;
+                            }
+                        })
+                        return ret;
+                    }
+                    if (conn.preCallSeq) { // sub stage
+                        if (fuzzyMatchScore(new Map([
+                            [ "да",        { input: msg.text, minScore: 80 } ],
+                            [ "конечно",   { input: msg.text, minScore: 80 } ],
+                            [ "да конечно",{ input: msg.text, minScore: 80 } ],
+                            [ "подключай", { input: msg.text, minScore: 60 } ],
+                            [ "нужен",     { input: msg.text, minScore: 50 } ],
+                           ])) ) {
+                            conn.answer(Bot.createMessage("callManagerByCommand", msg.id+1))
+                            await reqManager();
+                        } else {
+                            conn.answer(Bot.createMessage("howCanIBeHelpfull", msg.id+1));
+                        }
+                        conn.preCallSeq = false;
+                    } else { // main stage
+                        if (fuzzyMatchScore(new Map([
+                            [ "Вызови оператора", { input: msg.text, minScore: 65 } ],
+                            [ "Нужна реальная помощь", { input: msg.text, minScore: 60 } ],
+                            [ "человека бы", { input: msg.text, minScore: 60 } ],
+                            [ "Вызвать менеджера", { input: msg.text, minScore: 60 } ],
+                        ])))
+                        {
+                            conn.answer(Bot.createMessage("callManagerByCommand", msg.id+1))
+                            await reqManager();
+                        }
+                        else if (fuzzyMatchScore(new Map([
+                            [ "Что ты умеешь", { input: msg.text, minScore: 65 } ],
+                            [ "список возможностей", { input: msg.text, minScore: 60 } ],
+                            [ "команды", { input: msg.text, minScore: 50 } ],
+                        ])))
+                        {
+                            conn.answer(Bot.createMessage("whatBotCan", msg.id+1));
+                        }
+                        else if (fuzzyMatchScore(new Map([
+                            [ "Кто ты", { input: msg.text, minScore: 40 } ]
+                        ])))
+                        {
+                            conn.answer(Bot.createMessage("whoIm", msg.id+1));
+                        }
+                        else // FAQ search
+                        {
+                            let faqAnswer = Database.faq.search(msg.text);
+                            if (faqAnswer.length > 0) {
+                                conn.answer(Bot.createMessage("faq", msg.id+1, ...faqAnswer))
+                            } else {
+                                conn.answer(Bot.createMessage("askForCallManager", msg.id+1));
+                                conn.preCallSeq = true;
+                            }
+                        }
                     }
                     break;
             }

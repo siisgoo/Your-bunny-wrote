@@ -4,9 +4,11 @@ import download from 'download'
 import * as mime from 'mime-types'
 import { Database as ADatabase } from 'aloedb-node'
 import { assert, object, boolean, string, Infer } from 'superstruct'
+import fuzzy from 'fuzzy'
 import { randomUUID } from 'crypto'
 import { Config } from './Config.js'
 
+import { FAQEntrySign, FAQEntrySchema } from './Schemas/FAQ.js'
 import { FileSchema, FileSign } from './Schemas/File.js'
 import { ManagerSign, ManagerSchema, IManager } from './Schemas/Manager.js'
 import { ChatMessage, ChatMessageSign } from './Schemas/ChatMessage.js'
@@ -38,6 +40,7 @@ export type MessageSchema = Infer<typeof MessageSign>;
 const ChatEntryValidator = (document: any) => assert(document, ChatSign)
 const ManagerEntryValidator = (document: any) => assert(document, ManagerSign)
 const MessageEntryValidator = (document: any) => assert(document, MessageSign)
+const FAQEntryValidator = (document: any) => assert(document, FAQEntrySign)
 const FileEntryValidator = (document: any) => assert(document, FileSign)
 
 const managers = new ADatabase<ManagerSchema>({
@@ -66,6 +69,15 @@ const history = new ADatabase<MessageSchema>({
     onlyInMemory: false,
     schemaValidator: MessageEntryValidator,
 });
+
+const faq_db = new ADatabase<FAQEntrySchema>({
+    path: Config().server.database.path + "/faq.json",
+    pretty: true,
+    autoload: true,
+    immutable: true,
+    onlyInMemory: false,
+    schemaValidator: FAQEntryValidator,
+})
 
 const files_db = new ADatabase<FileSchema>({
     path: Config().server.database.path + "/files.json",
@@ -146,7 +158,19 @@ export class Files {
     }
 }
 
-export const Database = { managers, chats, history, files: new Files() }
+export class FAQ {
+    constructor() {
+    }
+
+    // super mega ultra simple buu
+    public search(s: string): string[] {
+        return fuzzy.filter(s, faq_db.documents, { extract: (e) => e.keywords.join(" ") })
+            .filter(e => e.score > 50)
+            .map(e => e.original.answer);
+    }
+}
+
+export const Database = { managers, chats, history, files: new Files(), faq: new FAQ }
 
 export class Message implements MessageSchema {
     message: ChatMessage;
