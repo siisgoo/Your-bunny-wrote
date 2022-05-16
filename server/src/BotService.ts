@@ -23,7 +23,6 @@ const commands = (()=> {
     let help = <Command>async function(this: BotService, ctx: TextContext) {
         let msg: string = "";
         Object.values(commands).forEach((cmd) => {
-            // @ts-ignore
             msg += "/" + cmd.name + " - " + cmd.description + ". Arg: " + cmd.args + "\n";
         })
         ctx.reply(msg);
@@ -61,7 +60,25 @@ const commands = (()=> {
     }
 
     let history = <Command>async function(this: BotService, ctx: TextContext) {
-        ctx.reply("In dev");
+        const max_tg_msg_len = 4096;
+        if (ctx.manager.linkedChat) {
+            let history_msg: string = "Chat history:";
+            let chat = await Chat.findOne({ hash: ctx.manager.linkedChat });
+            if (chat) {
+                let history = await chat.getHistory();
+                history.forEach(msg => {
+                    if (history_msg.length >= max_tg_msg_len) {
+                        ctx.reply(history_msg);
+                        history_msg = ""
+                    }
+                    history_msg += "From: " + msg.message.from.name + "\n" + msg.message.text + "\n";
+                })
+            } else {
+                ctx.reply("Cannot find chat");
+            }
+        } else {
+            ctx.reply("You are not connected to chat");
+        }
     }
 
     let setname = <Command>async function(this: BotService, ctx: TextContext) {
@@ -210,7 +227,7 @@ let actions = (() => {
             {   text: "Reject",
                 callback_data: cb_data.rejectManager + " " + id }
         ] ])
-        await ctx.telegram.sendMessage(Config().bot.admin_id, "Autorization request from @" + ctx.from!.username,
+        await ctx.telegram.sendMessage(Config().bot.admin_id, "Approve request from @" + ctx.from!.username,
                                        keyboard);
         next();
     }
@@ -350,13 +367,14 @@ export class BotService extends EventEmitter {
                 ctx.manager = mngr;
                 return next();
             } else if (ctx.updateType == 'callback_query') {
-                return next();
-            } else {
-                ctx.replyWithMarkdown("Welcome to rediirector bot. To start using bot you need to be aproved by bot adimnistraton.\n" +
-                                      "Full documentation represents [here](https://github.com/siisgoo/rediirector/blob/main/docs/index.md)");
-                ctx.reply("Click on button for send approve request",
-                          tg.Markup.inlineKeyboard([ [ { text: "Send", callback_data: "approve_request " + ctx.from!.id  }, ] ]));
+                let _ctx: CqContext = <CqContext>ctx;
+                if (_ctx.match.input.includes(cb_data.approveRequest)) {
+                    return next();
+                }
             }
+            await ctx.replyWithMarkdown("Welcome to rediirector bot. To start using bot you need to be aproved by bot administrator.\n" +
+                                        "Click on button for send approve request",
+                                            tg.Markup.inlineKeyboard([ [ { text: "Send", callback_data: cb_data.approveRequest + " " + ctx.from!.id  }, ] ]));
         })
 
         Object.values(commands).forEach(cmd =>
@@ -412,16 +430,15 @@ export class BotService extends EventEmitter {
     async stop() {
         if (!this.running) return;
         this.running = false;
-
+        await Database.managers.updateMany({ online: true }, { online: false, linkedChat: null });
+        await Database.managers.save();
+        await this.chatService.stop();
         let mngrs = Database.managers.documents;
         for (let m of mngrs) {
             await this.bot.telegram.sendMessage(m.userId, "Service going offline, your status will be reseted to offline");
             // await this.bot.telegram.sendSticker(m.userId, this.stickers.verySad);
         }
         this.bot.stop();
-        await Database.managers.updateMany({ online: true }, { online: false, linkedChat: null });
-        await Database.managers.save();
-        await this.chatService.stop();
         await this.onStop();
     }
 
