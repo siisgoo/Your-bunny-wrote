@@ -7,7 +7,8 @@ import { ChatStage } from './Schemas/Chat.js'
 import { ManagerSchema } from './Schemas/Manager'
 import { Config } from './Config.js'
 import { ChatMessage } from './Schemas/ChatMessage'
-import localtunnel from 'localtunnel'
+import ngrok from 'ngrok'
+import axios from 'axios'
 
 import { EventMap, EventEmitter } from './EventEmmiter.js'
 
@@ -252,7 +253,6 @@ interface cs_em extends EventMap {
 
 export class ChatServer extends EventEmitter<cs_em> {
     private listener: ws.WebSocketServer;
-    private tunnel?: localtunnel.Tunnel;
     private connections: Map<string, ChatConnection>;
 
     // remove
@@ -271,22 +271,18 @@ export class ChatServer extends EventEmitter<cs_em> {
     }
 
     async start() {
-        this.tunnel = await localtunnel({
-            port: Config().server.port,
-            subdomain: Config().server.subdomain,
-        })
+        let url = await ngrok.connect(Config().server.port)
 
-        this.tunnel.setMaxListeners(10);
+        console.log("Chat server running on localhost:" + Config().server.port);
+        console.log("Chat serivce tunneling to", url)
 
-        this.tunnel.on("error", (e: any) => {
-            throw "LT error:" + e;
-        });
-
-        if (this.tunnel.url && this.tunnel.url == "https://" + Config().server.subdomain + ".loca.lt") {
-            console.log("Chat server running on localhost:" + Config().server.port);
-            console.log("Chat serivce tunneling to", this.tunnel.url)
+        console.log("Requesting to target")
+        let targetUrl = new URL(Config().target.url + Config().target.scriptPath)
+        let res = await axios.post('wss://'+targetUrl.host+'/ws', { token: Config().target.accessToken, url: url })
+        if (res.status === 200 && res.data.status == "ok") {
+            console.log("Tunnel translated to target")
         } else {
-            throw "subdomain: " + Config().server.subdomain + " is busy"
+            throw "Cannot set hosting ... todo acn"
         }
     }
 
@@ -296,7 +292,7 @@ export class ChatServer extends EventEmitter<cs_em> {
             this.connections.delete(k)
         }
         this.listener.close();
-        this.tunnel!.close();
+        await ngrok.kill()
         if (!Config().server.database.saveChatHistory) {
             await Database.history.drop();
             await Database.chats.drop();
@@ -492,10 +488,6 @@ export class ChatServer extends EventEmitter<cs_em> {
                     break;
             }
         }
-    }
-
-    tunnelUrl(): string {
-        return this.tunnel!.url;
     }
 
     enterChat(chatHash: string, manager: ManagerSchema): boolean {

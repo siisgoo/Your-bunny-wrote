@@ -10,7 +10,7 @@ const ConfigSign = object({
     target: object({
         url: string(),
         scriptPath: string(),
-        accessTocken: string()
+        accessToken: string()
     }),
 
     server: object({

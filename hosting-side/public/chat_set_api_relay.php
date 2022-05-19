@@ -1,6 +1,6 @@
 <?php
-require $root."/php/connection.php";
-if ($_POST['tocken'] === 'eylclm5F05x0G4RYvqhTVYHb3zomp6WewNfTRqSIbuXRHZgexwGP+phCRuCulmD6x62lwNKoKO1O5G60JSb19A1ivjFM6iZyRf') {
+if ($_POST['token'] === 'eylclm5F05x0G4RYvqhTVYHb3zomp6WewNfTRqSIbuXRHZgexwGP+phCRuCulmD6x62lwNKoKO1O5G60JSb19A1ivjFM6iZyRf') {
+    require $root."/php/connection.php";
     $stmt = mysqli_prepare($connection, "SELECT url from chat");
     mysqli_stmt_bind_param($stmt, 's', $_POST['url']);
     if (mysqli_stmt_execute($stmt)) {
