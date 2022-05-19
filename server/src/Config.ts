@@ -7,6 +7,12 @@ const ConfigSign = object({
         admin_id: number()
     }),
 
+    target: object({
+        url: string(),
+        scriptPath: string(),
+        accessTocken: string()
+    }),
+
     server: object({
         database: object({
             saveChatHistory: boolean(),

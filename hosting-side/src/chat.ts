@@ -5,7 +5,7 @@ import { Model } from './Model.js'
 let model: Model;
 
 $(document).ready(function(){
-    model = new Model(new URL("wss://testrediirector.loca.lt/ws"));
+    model = new Model(new URL($('#chat-ralay-url').text()));
     let controler = new Controller(model);
     let view = new View(model);
 

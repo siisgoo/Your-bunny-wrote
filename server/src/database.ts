@@ -4,7 +4,7 @@ import download from 'download'
 import * as mime from 'mime-types'
 import { Database as ADatabase } from 'aloedb-node'
 import { assert, object, boolean, string, Infer } from 'superstruct'
-import fuzzy from 'fuzzy'
+import { fuzzyMatchMapSimple } from './Utils.js'
 import { randomUUID } from 'crypto'
 import { Config } from './Config.js'
 
@@ -163,10 +163,18 @@ export class FAQ {
     }
 
     // super mega ultra simple buu
-    public search(s: string): string[] {
-        return fuzzy.filter(s, faq_db.documents, { extract: (e) => e.keywords.join(" ") })
-            .filter(e => e.score > 50)
-            .map(e => e.original.answer);
+    public search(str: string): string[] {
+        let ret = new Array<string>();
+        faq_db.documents.forEach(e => {
+            if (fuzzyMatchMapSimple(e.keywords, str, 50)) {
+                ret.push(e.answer);
+            }
+        });
+        return ret;
+
+        // return fuzzy.filter(s, faq_db.documents, { extract: (e) => e.keywords.join(" ") })
+        //     .filter(e => e.score > 50)
+        //     .map(e => e.original.answer);
     }
 }
 

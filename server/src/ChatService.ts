@@ -1,7 +1,7 @@
 import * as fs from 'fs'
 import * as http from 'http'
 import * as ws from 'ws'
-import fuzzy from 'fuzzy'
+import { fuzzyMatchMap } from './Utils.js'
 import { Database, Chat, Manager } from './database.js'
 import { ChatStage } from './Schemas/Chat.js'
 import { ManagerSchema } from './Schemas/Manager'
@@ -441,25 +441,14 @@ export class ChatServer extends EventEmitter<cs_em> {
                         await conn.chat.setWaitingStatus(true);
                         this.emit('managerRequest', conn.chat);
                     }
-                    let fuzzyMatchScore = (s: Map<string, { input: string, minScore: number }>): boolean => {
-                        let ret = false;
-                        s.forEach((e, key) => {
-                            const match = fuzzy.match(key, e.input, { caseSensitive: false });
-                            if (match && match.score > e.minScore) {
-                                ret = true;
-                                // break;
-                            }
-                        })
-                        return ret;
-                    }
                     if (conn.preCallSeq) { // sub stage
-                        if (fuzzyMatchScore(new Map([
-                            [ "да",        { input: msg.text, minScore: 80 } ],
-                            [ "конечно",   { input: msg.text, minScore: 80 } ],
-                            [ "да конечно",{ input: msg.text, minScore: 80 } ],
-                            [ "подключай", { input: msg.text, minScore: 60 } ],
-                            [ "нужен",     { input: msg.text, minScore: 50 } ],
-                           ])) ) {
+                        if (fuzzyMatchMap([
+                            { search: "да",         input: msg.text, minScore: 80 },
+                            { search: "конечно",    input: msg.text, minScore: 80 },
+                            { search: "да конечно", input: msg.text, minScore: 80 },
+                            { search: "подключай",  input: msg.text, minScore: 60 },
+                            { search: "нужен",      input: msg.text, minScore: 50 },
+                           ]) ) {
                             conn.answer(Bot.createMessage("callManagerByCommand", msg.id+1))
                             await reqManager();
                         } else {
@@ -467,28 +456,26 @@ export class ChatServer extends EventEmitter<cs_em> {
                         }
                         conn.preCallSeq = false;
                     } else { // main stage
-                        if (fuzzyMatchScore(new Map([
-                            [ "Вызови оператора", { input: msg.text, minScore: 65 } ],
-                            [ "Нужна реальная помощь", { input: msg.text, minScore: 60 } ],
-                            [ "человека бы", { input: msg.text, minScore: 60 } ],
-                            [ "Вызвать менеджера", { input: msg.text, minScore: 60 } ],
-                        ])))
-                        {
+                        if (fuzzyMatchMap([
+                            { search: "Вызови оператора",      input: msg.text, minScore: 65 },
+                            { search: "Нужна реальная помощь", input: msg.text, minScore: 60 },
+                            { search: "человека бы",           input: msg.text, minScore: 60 },
+                            { search: "Вызвать менеджера",     input: msg.text, minScore: 60 },
+                        ])) {
                             conn.answer(Bot.createMessage("callManagerByCommand", msg.id+1))
                             await reqManager();
                         }
-                        else if (fuzzyMatchScore(new Map([
-                            [ "Что ты умеешь", { input: msg.text, minScore: 65 } ],
-                            [ "список возможностей", { input: msg.text, minScore: 60 } ],
-                            [ "команды", { input: msg.text, minScore: 50 } ],
-                        ])))
-                        {
+                        else if (fuzzyMatchMap([
+                            { search: "Что ты умеешь",       input: msg.text, minScore: 65 },
+                            { search: "список возможностей", input: msg.text, minScore: 60 },
+                            { search: "команды",             input: msg.text, minScore: 50 },
+                        ])) {
                             conn.answer(Bot.createMessage("whatBotCan", msg.id+1));
                         }
-                        else if (fuzzyMatchScore(new Map([
-                            [ "Кто ты", { input: msg.text, minScore: 40 } ]
-                        ])))
-                        {
+                        else if (fuzzyMatchMap([
+                            { search: "Кто ты", input: msg.text, minScore: 40 },
+                            { search: "ты кто", input: msg.text, minScore: 40 }
+                        ])) {
                             conn.answer(Bot.createMessage("whoIm", msg.id+1));
                         }
                         else // FAQ search

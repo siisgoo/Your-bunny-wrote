@@ -12,6 +12,7 @@
         "https": "^1.0.0",
         "localtunnel": "^2.0.2",
         "mime-types": "^2.1.35",
+        "ngrok": "^4.3.1",
         "superstruct": "^0.15.4",
         "telegraf": "^4.7.0",
         "types": "^0.1.1",
