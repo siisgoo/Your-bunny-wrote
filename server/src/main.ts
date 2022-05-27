@@ -6,22 +6,25 @@ import { Config } from './Config.js'
 const lockFilePath = "./.lock.pid";
 
 (async () => {
+
     try {
-        try {
-            if (fs.existsSync(lockFilePath)) {
-                throw "server already running. Process PID: " +
-                    fs.readFileSync(lockFilePath).toString()
-            }
-            Config();
-            try {
-                fs.accessSync(dirname(lockFilePath), fs.constants.W_OK)
-            } catch (e) {
-                throw "directory" + dirname(lockFilePath) + "not writable for user" + process.env.USER || "Unknown username"
-            }
-            fs.writeFileSync(lockFilePath, process.pid.toString(), { flag: "wx+" });
-        } catch (e: any) {
-            throw "preinitialization failed: " + e;
+        if (fs.existsSync(lockFilePath)) {
+            throw "server already running. Process PID: " +
+                fs.readFileSync(lockFilePath).toString()
         }
+        Config();
+        try {
+            fs.accessSync(dirname(lockFilePath), fs.constants.W_OK)
+        } catch (e) {
+            throw "directory" + dirname(lockFilePath) + "not writable for user" + process.env.USER || "Unknown username"
+        }
+        fs.writeFileSync(lockFilePath, process.pid.toString(), { flag: "wx+" });
+    } catch (e: any) {
+        console.error("Preinitialization failed:", e);
+        process.exit(-1)
+    }
+
+    try {
 
         let server = new BotService();
 
@@ -45,6 +48,6 @@ const lockFilePath = "./.lock.pid";
     } catch (e) {
         console.error("Terminating:", e);
         fs.unlinkSync(lockFilePath);
-        process.exit();
+        process.exit(-1);
     }
 })()

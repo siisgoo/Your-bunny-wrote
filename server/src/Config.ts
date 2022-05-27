@@ -14,6 +14,10 @@ const ConfigSign = object({
     }),
 
     server: object({
+        ngrok: object({
+            authtoken: string()
+        }),
+
         database: object({
             saveChatHistory: boolean(),
             path: string(),

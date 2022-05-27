@@ -9,6 +9,7 @@ import { Config } from './Config.js'
 import { ChatMessage } from './Schemas/ChatMessage'
 import ngrok from 'ngrok'
 import axios from 'axios'
+import * as qs from 'querystring'
 
 import { EventMap, EventEmitter } from './EventEmmiter.js'
 
@@ -271,18 +272,37 @@ export class ChatServer extends EventEmitter<cs_em> {
     }
 
     async start() {
-        let url = await ngrok.connect(Config().server.port)
+        let url = await ngrok.connect({
+            addr: Config().server.port,
+            authtoken: Config().server.ngrok.authtoken
+        })
 
         console.log("Chat server running on localhost:" + Config().server.port);
         console.log("Chat serivce tunneling to", url)
 
         console.log("Requesting to target")
-        let targetUrl = new URL(Config().target.url + Config().target.scriptPath)
-        let res = await axios.post('wss://'+targetUrl.host+'/ws', { token: Config().target.accessToken, url: url })
-        if (res.status === 200 && res.data.status == "ok") {
-            console.log("Tunnel translated to target")
+        let targetUrl = new URL(Config().target.url + '/' + Config().target.scriptPath)
+        console.log("Auth token:", Config().target.accessToken)
+        let payload = {
+            token: Config().target.accessToken,
+            url: 'wss://'+new URL(url).host+'/ws'
+        }
+        let res = await axios.post(targetUrl.toString(),
+            qs.stringify(payload),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        )
+        // let res = await axios({
+        //     url: targetUrl.toString(),
+        //     data: qs.stringify({
+        //         token: Config().target.accessToken,
+        //         url: url
+        //     }),
+        //     headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        // })
+        if (res.status == 200 && res.data.status == "ok") {
+            console.log("Relay url translated to traget:", Config().target.url)
         } else {
-            throw "Cannot set hosting ... todo acn"
+            throw "cannot set ralay url " + JSON.stringify(res.data)
         }
     }
 
@@ -326,11 +346,11 @@ export class ChatServer extends EventEmitter<cs_em> {
                 var to = key.indexOf("]",from);
                 var index = decodeURIComponent(key.substring(from+1,to));
                 key = decodeURIComponent(key.substring(0,from));
-            // @ts-ignore
+                // @ts-ignore
                 if(!result[key]) result[key] = [];
-            // @ts-ignore
+                // @ts-ignore
                 if(!index) result[key].push(val);
-            // @ts-ignore
+                // @ts-ignore
                 else result[key][index] = val;
             }
         });
@@ -444,7 +464,7 @@ export class ChatServer extends EventEmitter<cs_em> {
                             { search: "да конечно", input: msg.text, minScore: 80 },
                             { search: "подключай",  input: msg.text, minScore: 60 },
                             { search: "нужен",      input: msg.text, minScore: 50 },
-                           ]) ) {
+                        ]) ) {
                             conn.answer(Bot.createMessage("callManagerByCommand", msg.id+1))
                             await reqManager();
                         } else {
@@ -494,7 +514,7 @@ export class ChatServer extends EventEmitter<cs_em> {
         if (this.connections.has(chatHash)) {
             let chat = this.connections.get(chatHash);
             if (chat) {
-                if (!chat.chat!.managerId) {
+                if (chat.chat.managerId == null) {
                     chat.accept(manager);
                     return true;
                 }

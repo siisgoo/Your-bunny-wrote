@@ -1,14 +1,22 @@
 <?php
-if ($_POST['token'] === 'eylclm5F05x0G4RYvqhTVYHb3zomp6WewNfTRqSIbuXRHZgexwGP+phCRuCulmD6x62lwNKoKO1O5G60JSb19A1ivjFM6iZyRf') {
-    require $root."/php/connection.php";
-    $stmt = mysqli_prepare($connection, "SELECT url from chat");
-    mysqli_stmt_bind_param($stmt, 's', $_POST['url']);
+$request = array_merge($_GET, $_POST, $_REQUEST, $_COOKIE);
+if ($request['token'] === '') {
+    require $_SERVER["DOCUMENT_ROOT"]."/php/connection.php";
+    $stmt = mysqli_prepare($connection, "UPDATE chat SET url=?");
+    mysqli_stmt_bind_param($stmt, 's', $request['url']);
     if (mysqli_stmt_execute($stmt)) {
         echo json_encode(['status'=>'ok']);
     } else {
-        echo json_encode(['status'=>'error']);
+        echo json_encode(['status'=>'error', 'text'=>$connection->error]);
     }
 } else {
-    echo json_encode(['status'=>'error']);
+    $request_str="";
+    foreach($request as $item){
+        $request_str = $request_str . " " . $item;
+    }
+    echo json_encode([
+        'status'=>'error',
+        'text'=>'not valid token: ' . $request_str
+    ]);
 }
 ?>

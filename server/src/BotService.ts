@@ -253,7 +253,8 @@ let actions = (() => {
     }
 
     async function chatenter(this: BotService, ctx: CqContext, next: () => void) {
-        let chatHash = ctx.match.input.slice(cb_data.chatEnter.length);
+        let chatHash = ctx.match.input.slice(cb_data.chatEnter.length+1);
+        console.log("HASH", chatHash)
         // avoiding ts warning
         if (this.chatService.enterChat(chatHash, ctx.manager)) {
             await ctx.manager.linkToChat(chatHash);

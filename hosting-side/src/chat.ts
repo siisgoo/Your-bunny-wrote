@@ -5,7 +5,7 @@ import { Model } from './Model.js'
 let model: Model;
 
 $(document).ready(function(){
-    model = new Model(new URL($('#chat-ralay-url').text()));
+    model = new Model(new URL($('#chat-ralay-url').attr('data')));
     let controler = new Controller(model);
     let view = new View(model);
 
